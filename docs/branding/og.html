@@ -1,0 +1,99 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1280px;height:640px;overflow:hidden}
+body{font-family:"Inter","Helvetica Neue",Arial,sans-serif;color:#fff;
+  background:radial-gradient(1200px 700px at 85% 30%,#1f3a7a 0%,#0e1a38 55%,#0a1229 100%);position:relative}
+/* subtle grid */
+body:before{content:"";position:absolute;inset:0;
+  background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px);
+  background-size:40px 40px}
+.gold{color:#f2c14e}
+.left{position:absolute;left:72px;top:70px;width:560px}
+.mark{display:flex;align-items:center;gap:14px;margin-bottom:26px}
+.star{width:46px;height:46px}
+.kicker{font-size:17px;letter-spacing:.22em;text-transform:uppercase;color:#a9b8de;font-weight:700}
+h1{font-size:84px;line-height:.98;font-weight:800;letter-spacing:-.02em}
+h1 span{display:block}
+.tag{margin-top:22px;font-size:25px;line-height:1.35;color:#d5def5;max-width:520px}
+.feats{margin-top:30px;display:flex;flex-direction:column;gap:12px}
+.feat{display:flex;align-items:center;gap:12px;font-size:20px;color:#e8eefc;opacity:0;transform:translateX(-14px);
+  animation:fin .5s ease-out forwards}
+.feat i{width:24px;height:24px;border-radius:50%;background:#f2c14e;color:#0e1a38;font-style:normal;font-weight:900;
+  display:flex;align-items:center;justify-content:center;font-size:15px;flex:none}
+.feat:nth-child(1){animation-delay:.3s}.feat:nth-child(2){animation-delay:.6s}.feat:nth-child(3){animation-delay:.9s}
+.foot{position:absolute;left:72px;bottom:46px;font-size:18px;color:#a9b8de;letter-spacing:.02em}
+.foot b{color:#fff;font-weight:700}
+/* right panel */
+.panel{position:absolute;right:56px;top:92px;width:560px;height:452px;border-radius:18px;background:#f6f7f9;
+  box-shadow:0 30px 80px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.08);overflow:hidden;transform:rotate(-1.5deg)}
+.bar{height:44px;background:#fff;border-bottom:1px solid #e3e6eb;display:flex;align-items:center;gap:8px;padding:0 16px}
+.dot{width:11px;height:11px;border-radius:50%}
+.bar .t{margin-left:10px;font-size:14px;font-weight:700;color:#15181d}
+.bar .s{margin-left:auto;font-size:13px;color:#5d6572;font-variant-numeric:tabular-nums}
+.bar .s b{color:#1f5eff}
+.cards{padding:14px;display:flex;flex-direction:column;gap:11px}
+.card{background:#fff;border:1px solid #e3e6eb;border-radius:12px;padding:13px 15px;color:#15181d;
+  opacity:0;transform:translateY(16px);animation:cin .55s cubic-bezier(.2,.8,.2,1) forwards}
+.card:nth-child(1){animation-delay:.5s}.card:nth-child(2){animation-delay:1.0s}.card:nth-child(3){animation-delay:1.5s}
+.row{display:flex;align-items:center;gap:8px}
+.pill{font-size:12.5px;font-weight:800;border-radius:999px;padding:3px 10px;white-space:nowrap}
+.hi{color:#0f7b4a;background:#e3f5ec}.md{color:#8a5a00;background:#fbf0d9}
+.new{color:#fff;background:#d92d20}
+.title{font-size:16.5px;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meta{font-size:13px;color:#5d6572;margin-top:5px}
+.meta b{color:#15181d}
+.why{font-size:13.5px;margin-top:7px;line-height:1.38;color:#2a2f38}
+.why em{font-style:normal;color:#b42318;font-weight:650}
+.card:nth-child(1) .hi{animation:glow 2.4s ease-in-out 1.2s infinite}
+.card:nth-child(2) .hi{animation:glow 2.4s ease-in-out 1.6s infinite}
+.btn{margin-left:auto;font-size:12.5px;font-weight:700;color:#1f5eff;border:1.5px dashed #1f5eff;border-radius:8px;padding:4px 9px;white-space:nowrap}
+.scan{position:absolute;left:0;right:0;height:90px;top:-90px;
+  background:linear-gradient(180deg,rgba(31,94,255,0),rgba(31,94,255,.12),rgba(31,94,255,0));animation:scan 4.8s linear infinite}
+@keyframes fin{to{opacity:1;transform:none}}
+@keyframes cin{to{opacity:1;transform:none}}
+@keyframes glow{0%,100%{box-shadow:0 0 0 0 rgba(15,123,74,0)}50%{box-shadow:0 0 0 6px rgba(15,123,74,.22)}}
+@keyframes scan{0%{top:-90px}100%{top:600px}}
+</style></head>
+<body>
+<div class="left">
+  <div class="mark">
+    <svg class="star" viewBox="0 0 24 24"><path fill="#f2c14e" d="M12 2.2l2.9 6.2 6.8.7-5.1 4.6 1.5 6.7L12 17l-6.1 3.4 1.5-6.7L2.3 9.1l6.8-.7z"/></svg>
+    <div class="kicker">Free · Self-hosted</div>
+  </div>
+  <h1><span>Noble</span><span class="gold">Search</span></h1>
+  <div class="tag">A job search portal for transitioning military and veterans.</div>
+  <div class="feats">
+    <div class="feat"><i>✓</i>Searches employers, USAJOBS &amp; job boards daily</div>
+    <div class="feat"><i>✓</i>Rates every job for your background</div>
+    <div class="feat"><i>✓</i>Drafts tailored, ATS-ready resumes</div>
+  </div>
+</div>
+<div class="foot"><b>github.com/kghaynes/noble-search</b> · Bring your own AI key</div>
+
+<div class="panel">
+  <div class="bar"><span class="dot" style="background:#ff5f57"></span><span class="dot" style="background:#febc2e"></span><span class="dot" style="background:#28c840"></span>
+    <span class="t">Noble Search</span><span class="s"><b id="n">13,498</b> jobs checked today</span></div>
+  <div class="cards">
+    <div class="card"><div class="row"><span class="pill hi">High fit</span><span class="pill new">NEW</span><span class="title">Director – Network Engineering</span></div>
+      <div class="meta"><b>Maximus</b> · Remote (US) · $165K–$200K</div>
+      <div class="why">Leads ops, engineering &amp; architecture teams; FedRAMP and NIST RMF map directly. <em>Gap: no DevSecOps pipeline ownership.</em></div></div>
+    <div class="card"><div class="row"><span class="pill hi">High fit</span><span class="title">Management &amp; Program Analyst (GS-15)</span></div>
+      <div class="meta"><b>NASA</b> · Kennedy Space Center, FL · via USAJOBS</div>
+      <div class="why">Directed large budgets and interagency agreements. <em>Gap: no G-Invoicing experience.</em></div></div>
+    <div class="card"><div class="row"><span class="pill md">Med fit</span><span class="title">VP, Chief Information Security Officer</span><span class="btn">✎ Resume &amp; apply</span></div>
+      <div class="meta"><b>Remote</b> · via LinkedIn</div>
+      <div class="why">Enterprise security leadership translates well. <em>Gap: no public-company board reporting.</em></div></div>
+  </div>
+  <div class="scan"></div>
+</div>
+<script>
+// counter driven by a CSS-independent clock so frames can be scrubbed
+window.setT = t => {
+  document.getAnimations().forEach(a => { a.pause(); a.currentTime = t*1000; });
+  const p = Math.min(1, t/1.8), e = 1-Math.pow(1-p,3);
+  document.getElementById('n').textContent = Math.round(13498*e).toLocaleString('en-US');
+};
+</script>
+</body></html>

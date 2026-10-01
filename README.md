@@ -2,6 +2,10 @@
 
 **A job search portal for transitioning military and veterans.**
 
+[![tests](https://github.com/kghaynes/noble-search/actions/workflows/tests.yml/badge.svg)](https://github.com/kghaynes/noble-search/actions/workflows/tests.yml)
+[![release](https://img.shields.io/github/v/release/kghaynes/noble-search)](https://github.com/kghaynes/noble-search/releases)
+[![license: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)](LICENSE.md)
+
 <p align="center">
   <img src="docs/screenshots/tour.gif" alt="Noble Search tour: rated jobs, search sources, employer finder, settings, draft library, phone view, getting started" width="900">
 </p>
@@ -40,6 +44,7 @@ Everything is kept on your computer. You bring your own AI key, which costs a fe
 - [Updating, backing up, stopping and removing](#updating-backing-up-stopping-and-removing)
 - [Troubleshooting](#troubleshooting)
 - [Advanced](#advanced)
+- [Getting help and contributing](#getting-help-and-contributing)
 - [Disclaimer](#disclaimer)
 - [License](#license)
 
@@ -585,6 +590,16 @@ python3 -m unittest discover -s tests
 | `data/` | **Your** data. Created on first run and never committed to git. |
 
 Besides Python itself, the only library used is `python-docx`.
+
+---
+
+## Getting help and contributing
+
+- **Questions:** [Discussions → Q&A](https://github.com/kghaynes/noble-search/discussions)
+- **Bugs, ideas, or an employer that can't be read:** [open an issue](https://github.com/kghaynes/noble-search/issues/new/choose)
+- **Security problems:** report privately. See [SECURITY.md](SECURITY.md).
+- **Code and docs:** see [CONTRIBUTING.md](CONTRIBUTING.md). Contributions need the license grant described there.
+- **What changed in each version:** [CHANGELOG.md](CHANGELOG.md)
 
 ---
 

@@ -1,0 +1,31 @@
+name: tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m unittest discover -s tests -v
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image and check it starts
+        run: |
+          docker build -t noble-search:ci .
+          docker run -d --name ns -p 8093:8093 noble-search:ci
+          for i in $(seq 1 20); do curl -fsS http://127.0.0.1:8093/health && exit 0; sleep 2; done
+          docker logs ns; exit 1

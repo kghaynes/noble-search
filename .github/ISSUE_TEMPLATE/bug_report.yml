@@ -1,0 +1,40 @@
+name: Bug report
+description: Something isn't working the way the README says it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "**Please remove API keys, passwords, your address and resume details from anything you paste.**"
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you clicked or ran, what you expected, and what you saw instead.
+    validations: {required: true}
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Open Search\n2. Click Run now\n3. ..."
+  - type: dropdown
+    id: page
+    attributes:
+      label: Which part?
+      options: [Install / Docker, Jobs page, Search / daily search, Fit rating, Resume or application drafts, Settings / keys, Morning email or push, Other]
+    validations: {required: true}
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Release (e.g. v0.1.0), or run `git log -1 --oneline`.
+  - type: dropdown
+    id: os
+    attributes:
+      label: Computer
+      options: [Mac, Windows, Linux, Other]
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs (optional)
+      description: Output of `docker compose logs --tail 100`, with anything personal removed.
+      render: text

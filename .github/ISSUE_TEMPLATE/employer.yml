@@ -1,0 +1,27 @@
+name: Employer can't be read
+description: 'The "Add an employer by name" finder did not find it, or its jobs do not come through.'
+labels: [employer]
+body:
+  - type: input
+    id: company
+    attributes:
+      label: Company name
+    validations: {required: true}
+  - type: input
+    id: url
+    attributes:
+      label: Careers page link
+      description: The page that lists the jobs (after you click "Search jobs" or similar).
+    validations: {required: true}
+  - type: textarea
+    id: what
+    attributes:
+      label: What did Noble Search say?
+      description: The finder's result, or the note in the run summary for this employer.
+  - type: checkboxes
+    id: check
+    attributes:
+      label: Before you send
+      options:
+        - label: I checked that the careers page shows jobs in a normal browser.
+          required: true
