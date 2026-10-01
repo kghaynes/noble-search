@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Noble Search — Draft Library</title>
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --ink:#15181d; --muted:#5d6572; --line:#e3e6eb;
+  --accent:#1f5eff; --accent-soft:#e8eeff;
+  --ok:#0f7b4a; --ok-bg:#e3f5ec; --warn:#8a5a00; --warn-bg:#fbf0d9; --bad:#b42318; --bad-bg:#fde8e7;
+  --shadow:0 1px 2px rgba(16,24,40,.06);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0f1115; --panel:#171a20; --ink:#e8eaee; --muted:#9aa3b0; --line:#2a2f38;
+    --accent:#6e97ff; --accent-soft:#1d2640;
+    --ok:#4cc38a; --ok-bg:#123325; --warn:#e3b341; --warn-bg:#33290f; --bad:#ff6b6b; --bad-bg:#3a1d1d;
+    --shadow:none;
+  }
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+a{color:var(--accent)}
+.wrap{max-width:1000px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:0 0 2px}
+.muted{color:var(--muted);font-size:13px}
+.bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0}
+.bar input,.bar select{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:7px 10px;color:var(--ink);font:inherit}
+.bar input{flex:1;min-width:200px}
+.stats{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.stats b{color:var(--ink);font-size:16px;font-variant-numeric:tabular-nums;margin-right:4px}
+.job{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:10px 0;box-shadow:var(--shadow)}
+.jh{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.jh .t{font-weight:650;font-size:16px;text-decoration:none;color:var(--ink)}
+.jh .t:hover{color:var(--accent)}
+.pill{font-size:12px;font-weight:650;border-radius:999px;padding:2px 9px;white-space:nowrap}
+.keep{color:var(--ok);background:var(--ok-bg)} .soon{color:var(--bad);background:var(--bad-bg)} .later{color:var(--warn);background:var(--warn-bg)}
+.status{color:var(--muted);border:1px solid var(--line)}
+table{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
+td,th{padding:6px 8px;border-top:1px solid var(--line);text-align:left;vertical-align:middle}
+th{color:var(--muted);font-weight:600;border-top:0}
+.num{font-variant-numeric:tabular-nums}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:7px;padding:3px 9px;cursor:pointer;font:inherit;font-size:12px;color:var(--ink);text-decoration:none;display:inline-block}
+.btn:hover{border-color:var(--accent)}
+.del{color:var(--bad)}
+.empty{padding:40px;text-align:center;color:var(--muted)}
+.wrapx{overflow-x:auto}
+.rules{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-size:13px;color:var(--muted)}
+.rules b{color:var(--ink)}
+.legal{position:fixed;left:0;right:0;bottom:0;z-index:15;background:var(--panel);border-top:1px solid var(--line);color:var(--muted);font-size:11.5px;line-height:1.4;padding:6px 16px calc(6px + env(safe-area-inset-bottom,0px));text-align:center}
+.legal a{color:var(--muted)}
+body{padding-bottom:56px}
+
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Draft Library <span class="muted" style="font-weight:400;font-size:14px">· Noble Search</span></h1>
+  <div class="muted">Every resume and application draft on this server, grouped by job. <a href="/">Back to the dashboard</a></div>
+  <div class="bar">
+    <input type="search" id="q" placeholder="Search job title or company…">
+    <select id="show"><option value="all">All jobs</option><option value="removing">Will be removed</option><option value="kept">Kept (watchlist)</option></select>
+  </div>
+  <div class="stats" id="stats"></div>
+  <div class="rules" id="rules" style="margin-top:12px"></div>
+  <div id="list"><div class="empty">Loading…</div></div>
+</div>
+<footer class="legal">Noble Search &copy; 2026 Kenneth Haynes and <a href="https://cybercloudai.tech" target="_blank" rel="noopener">CyberCloudAI.tech</a>. Licensed under the <a href="https://polyformproject.org/licenses/noncommercial/1.0.0/" target="_blank" rel="noopener">PolyForm Noncommercial License 1.0.0</a>. Commercial use or reuse is prohibited without written permission.</footer>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const when = iso => iso ? new Date(iso).toLocaleString([], {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}) : '';
+const day = iso => iso ? new Date(iso+'T12:00:00').toLocaleDateString([], {month:'short', day:'numeric', year:'numeric'}) : '';
+let DATA = {jobs:[], retention_days:30};
+
+async function load(){
+  const r = await fetch('/drafts/all'); DATA = await r.json(); render();
+}
+function removal(j){
+  if(j.kept) return `<span class="pill keep">Kept — on your watchlist</span>`;
+  if(j.days_left === null || j.days_left === undefined) return '';
+  const cls = j.days_left <= 7 ? 'soon' : 'later';
+  const txt = j.days_left <= 0 ? 'Removed at the next cleanup' : `Removed ${day(j.expires)} · ${j.days_left} day${j.days_left===1?'':'s'} left`;
+  return `<span class="pill ${cls}">${txt}</span>`;
+}
+function draftRow(d){
+  const kind = d.kind === 'application' ? 'Application text' : 'Resume';
+  const kw = d.keywords && d.keywords.score != null ? `${d.keywords.score}% keywords` : '';
+  const dl = [d.has_docx ? `<a class="btn" href="/drafts/docx?id=${d.id}">.docx</a>` : '',
+              d.status === 'done' ? `<a class="btn" href="/drafts/txt?id=${d.id}">.txt</a>` : ''].join(' ');
+  return `<tr><td>${kind} #${d.id}</td><td>${esc(when(d.created))}</td><td>${esc(d.provider==='anthropic'?'Claude':'Local')} · ${esc(d.model)}</td>
+    <td>${d.status==='done' ? esc(kw) : esc(d.status)}</td><td style="white-space:nowrap">${dl} <button class="btn del" data-del="${d.id}">Delete</button></td></tr>`;
+}
+function render(){
+  const q = $('#q').value.trim().toLowerCase(), show = $('#show').value;
+  const jobs = DATA.jobs.filter(j => (!q || (j.title+' '+j.company).toLowerCase().includes(q)) &&
+    (show==='all' || (show==='kept' ? j.kept : !j.kept)));
+  const all = DATA.jobs, nd = all.reduce((a,j)=>a+j.drafts.length,0);
+  const soon = all.filter(j => !j.kept && j.days_left !== null && j.days_left <= 7);
+  $('#stats').innerHTML = `<span><b>${nd}</b>drafts</span><span><b>${all.length}</b>jobs</span><span><b>${all.filter(j=>j.kept).length}</b>kept on watchlist</span><span><b>${soon.length}</b>jobs removed within 7 days</span>`;
+  $('#rules').innerHTML = `<b>How long drafts are kept:</b> drafts live as long as their job. Jobs on your watchlist (Interested, Applied, Interviewing, Offer) are kept until you change their status. Every other job — including Dismissed — is removed ${DATA.retention_days} days after it was posted (or last seen), and its drafts are deleted with it. To keep a draft, mark the job ★ Interested, or download it.`;
+  $('#list').innerHTML = jobs.length ? jobs.map(j => `<div class="job">
+      <div class="jh"><a class="t" href="${esc(j.link||'#')}" target="_blank" rel="noopener">${esc(j.title)}</a><span class="muted">${esc(j.company)}</span>
+        ${j.status?`<span class="pill status">${esc(j.status)}</span>`:''}<span class="muted">${j.drafts.length} draft${j.drafts.length===1?'':'s'}</span>
+        <span style="flex:1"></span>${removal(j)}</div>
+      <div class="wrapx"><table><thead><tr><th>Draft</th><th>Created</th><th>Model</th><th>Check</th><th>Download</th></tr></thead>
+      <tbody>${j.drafts.map(draftRow).join('')}</tbody></table></div></div>`).join('')
+    : `<div class="empty">${DATA.jobs.length ? 'No drafts match.' : 'No drafts yet. Open a job and click ✎ Resume & apply.'}</div>`;
+}
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-del]'); if(!b) return;
+  if(!confirm('Delete this draft? This cannot be undone.')) return;
+  await fetch('/drafts/delete', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id:+b.dataset.del})});
+  load();
+});
+$('#q').addEventListener('input', render); $('#show').addEventListener('input', render);
+load();
+</script>
+</body>
+</html>

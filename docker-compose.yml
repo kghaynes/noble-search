@@ -1,0 +1,17 @@
+services:
+  noble-search:
+    build: .
+    image: noble-search:local
+    container_name: noble-search
+    restart: unless-stopped
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${HOST_PORT:-8093}:8093"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      TZ: ${TZ:-America/New_York}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data:/data

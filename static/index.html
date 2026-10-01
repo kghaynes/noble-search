@@ -1,0 +1,926 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Noble Search</title>
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --ink:#15181d; --muted:#5d6572; --line:#e3e6eb;
+  --accent:#1f5eff; --accent-soft:#e8eeff;
+  --high:#0f7b4a; --high-bg:#e3f5ec; --med:#8a5a00; --med-bg:#fbf0d9; --low:#6b7280; --low-bg:#eef0f3;
+  --star:#c27c00; --applied:#1f5eff; --intv:#7b3fe4; --offer:#0f7b4a; --dismiss:#9aa1ab;
+  --new:#d93b3b; --shadow:0 1px 2px rgba(16,24,40,.06);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0f1115; --panel:#171a20; --ink:#e8eaee; --muted:#9aa3b0; --line:#2a2f38;
+    --accent:#6e97ff; --accent-soft:#1d2640;
+    --high:#4cc38a; --high-bg:#123325; --med:#e3b341; --med-bg:#33290f; --low:#9aa3b0; --low-bg:#23272f;
+    --star:#f0b429; --applied:#6e97ff; --intv:#b28cff; --offer:#4cc38a; --dismiss:#6b7280; --new:#ff6b6b;
+    --shadow:none;
+  }
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+a{color:var(--accent)}
+header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line)}
+.wrap{max-width:1100px;margin:0 auto;padding:0 16px}
+.top{display:flex;align-items:center;gap:12px;padding:14px 0 10px;flex-wrap:wrap}
+.top h1{font-size:19px;margin:0;font-weight:650;letter-spacing:-.01em}
+.sync{color:var(--muted);font-size:13px;flex:1;min-width:180px}
+.sync.err{color:var(--new)}
+button,select,input,textarea{font:inherit;color:inherit}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:6px 12px;cursor:pointer;box-shadow:var(--shadow)}
+.btn:hover{border-color:var(--accent)}
+.tabs{display:flex;gap:4px;padding-bottom:10px;flex-wrap:wrap}
+.tab{border:0;background:transparent;padding:7px 12px;border-radius:8px;cursor:pointer;color:var(--muted);font-weight:600}
+.tab.on{background:var(--accent-soft);color:var(--accent)}
+.tab .n{font-weight:500;opacity:.8;margin-left:4px}
+.filters{display:flex;gap:8px;padding-bottom:12px;flex-wrap:wrap;align-items:center}
+.filters input[type=search]{flex:1;min-width:200px;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:7px 10px}
+.filters select{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:7px 8px}
+.chk{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:14px;white-space:nowrap}
+main{padding:14px 0 60px}
+.empty{color:var(--muted);text-align:center;padding:48px 0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px;box-shadow:var(--shadow);display:grid;grid-template-columns:1fr auto;gap:6px 16px}
+.card.dim{opacity:.6}
+.card .head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.title{font-size:16px;font-weight:650;text-decoration:none;color:var(--ink)}
+.title:hover{color:var(--accent);text-decoration:underline}
+.pill{font-size:12px;font-weight:650;border-radius:999px;padding:2px 8px;white-space:nowrap}
+.fit-High{color:var(--high);background:var(--high-bg)} .fit-Med{color:var(--med);background:var(--med-bg)} .fit-Low{color:var(--low);background:var(--low-bg)}
+.newb{color:#fff;background:var(--new)}
+.warn{color:var(--med);background:var(--med-bg)}
+.sub{color:var(--muted);font-size:14px}
+.sub b{color:var(--ink);font-weight:600}
+.meta{display:flex;gap:6px 14px;flex-wrap:wrap;color:var(--muted);font-size:13px}
+.meta .close{color:var(--new);font-weight:600}
+.why{font-size:14px;margin-top:2px}
+.main{display:flex;flex-direction:column;gap:4px;min-width:0}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;align-content:start;min-width:220px}
+.actions .st[data-s=dismissed]{grid-column:1 / -1}
+.st{border:1px solid var(--line);background:transparent;border-radius:8px;padding:5px 10px;cursor:pointer;font-size:13px;text-align:left;color:var(--muted)}
+.st:hover{border-color:var(--ink);color:var(--ink)}
+.st.on[data-s=interested]{background:var(--star);border-color:var(--star);color:#fff}
+.st.on[data-s=applied]{background:var(--applied);border-color:var(--applied);color:#fff}
+.st.on[data-s=interviewing]{background:var(--intv);border-color:var(--intv);color:#fff}
+.st.on[data-s=offer]{background:var(--offer);border-color:var(--offer);color:#fff}
+.st.on[data-s=dismissed]{background:var(--dismiss);border-color:var(--dismiss);color:#fff}
+.notes{grid-column:1 / -1}
+.notes textarea{width:100%;min-height:38px;resize:vertical;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:7px 10px;font-size:14px}
+.notes textarea:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+.fbar{background:var(--med-bg);color:var(--med);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:14px}
+.linkbtn{border:0;background:none;color:var(--accent);cursor:pointer;font-weight:600;text-decoration:underline;padding:0 4px}
+.saved{font-size:12px;color:var(--muted);height:14px}
+.nav{display:flex;gap:2px;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:2px}
+.nav button{border:0;background:transparent;padding:5px 12px;border-radius:7px;cursor:pointer;color:var(--muted);font-weight:600;font-size:14px}
+.nav button.on{background:var(--accent-soft);color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn:disabled{opacity:.55;cursor:default}
+.btn.sm{padding:3px 9px;font-size:13px}
+.draftbtn{grid-column:1 / -1;border:1px dashed var(--accent);background:transparent;color:var(--accent);border-radius:8px;padding:5px 10px;cursor:pointer;font-size:13px;font-weight:600}
+.draftbtn.on{background:var(--accent-soft);border-style:solid}
+.dpanel{grid-column:1 / -1;border-top:1px solid var(--line);margin-top:4px;padding-top:12px;display:flex;flex-direction:column;gap:10px}
+.dpanel h4{margin:0;font-size:14px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.hint{color:var(--muted);font-size:13px}
+.hint.err{color:var(--new)}
+.dpanel textarea.jd{width:100%;min-height:90px;max-height:320px;resize:vertical;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px;font-size:13px}
+select.inp,input.inp{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:6px 8px}
+.ver{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;background:var(--bg)}
+.ver .vh{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px}
+.ok{color:var(--high);background:var(--high-bg)} .bad{color:var(--new);background:rgba(217,59,59,.12)}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp 1s linear infinite;vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.ver ul{margin:2px 0 0 18px;padding:0;font-size:13px}
+.ver pre{white-space:pre-wrap;font:12.5px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px;max-height:420px;overflow:auto;margin:0}
+.page{display:flex;flex-direction:column;gap:14px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:var(--shadow)}
+.box h2{font-size:16px;margin:0 0 4px}
+.box > .hint{margin-bottom:10px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px}
+.fld{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+.fld input,.fld textarea,.fld select{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:7px 10px;color:var(--ink);font-size:14px}
+.fld textarea{resize:vertical;min-height:60px}
+.fld.full{grid-column:1 / -1}
+textarea.inv{width:100%;min-height:420px;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:10px;resize:vertical;color:var(--ink)}
+.rlist{display:flex;flex-direction:column;gap:6px;margin:8px 0}
+.ritem{display:flex;gap:10px;align-items:center;flex-wrap:wrap;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg);font-size:14px}
+.ritem .nm{flex:1;min-width:160px;font-weight:600}
+.radio{display:flex;gap:6px;align-items:center;font-size:14px;color:var(--ink)}
+.pill.unrated{color:var(--muted);background:transparent;border:1px dashed var(--line)}
+.ratedby{font-size:12px;color:var(--muted);margin-top:4px}
+.fbox{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:6px 0;background:var(--bg)}
+.fh{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px}
+.ftxt{white-space:pre-wrap;font-size:13px;margin-top:6px;color:var(--ink)}
+.cc{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}.cc.over{color:var(--new);font-weight:600}
+.fields h5{margin:12px 0 4px;font-size:13px}
+.kwbox{margin:8px 0;display:flex;flex-direction:column;gap:4px}
+.kwrow{display:flex;flex-wrap:wrap;gap:4px;align-items:center}.kwl{font-size:12px;color:var(--muted);margin-right:4px}
+.kw{font-size:12px;border-radius:999px;padding:1px 8px;border:1px solid var(--line)}
+.kw.add{background:var(--med-bg);color:var(--med)}.kw.gap{background:var(--low-bg);color:var(--low)}.kw.ok{background:var(--high-bg);color:var(--high)}
+details.qs summary{cursor:pointer;margin:4px 0}
+.sect{margin:10px 2px 0;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+details.howto{margin:4px 0 10px;font-size:13px}details.howto summary{cursor:pointer;color:var(--accent,#2b59c3);font-weight:600}
+details.howto ol{margin:6px 0 0;padding-left:20px;line-height:1.55}details.howto a{color:var(--accent,#2b59c3)}
+details.howto code{font-size:12px;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+.setup{background:var(--panel);border:1px solid var(--accent);border-radius:12px;padding:14px 16px;margin:12px 0}
+.setup .sh{display:flex;gap:10px;align-items:baseline}.setup ol{list-style:none;margin:8px 0 0;padding:0}
+.setup li{display:flex;gap:10px;padding:6px 0;border-top:1px solid var(--line)}.setup li:first-child{border-top:0}
+.setup .ck{flex:0 0 22px;height:22px;border-radius:50%;border:2px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
+.setup li.done .ck{background:var(--accent);border-color:var(--accent);color:#fff}.setup li.done .linkbtn{color:var(--muted);text-decoration:line-through}
+details.adv>summary{cursor:pointer;list-style-position:inside}
+.finder{border:1px dashed var(--line);border-radius:10px;padding:10px 12px;margin:10px 0}
+.fh2{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:8px}
+.cand{display:flex;gap:12px;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:6px 0;background:var(--bg)}
+.cand>div{min-width:0}
+.box.info{background:var(--accent-soft)}
+ul.srcs{margin:6px 0 8px;padding-left:20px;columns:2;font-size:13px}
+@media (max-width:700px){ul.srcs{columns:1}.cand{flex-direction:column;align-items:flex-start}}
+details.runlog summary{cursor:pointer;margin:6px 0;line-height:1.6}
+details.runlog summary::marker{color:var(--accent)}
+.legal{position:fixed;left:0;right:0;bottom:0;z-index:15;background:var(--panel);border-top:1px solid var(--line);color:var(--muted);font-size:11.5px;line-height:1.4;padding:6px 16px calc(6px + env(safe-area-inset-bottom,0px));text-align:center}
+.legal a{color:var(--muted)}
+body{padding-bottom:56px}
+.brand{display:flex;flex-direction:column;line-height:1.15}
+.brand .tag{font-size:12px;color:var(--muted)}
+.qt{border-collapse:collapse;width:100%;font-size:13px}
+.qt th,.qt td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+.qt th{color:var(--muted);font-weight:600;white-space:nowrap}
+.qt .num{text-align:right;font-variant-numeric:tabular-nums}
+.qt tr.bad td:first-child{color:var(--new)}
+.qt .err{color:var(--new)}
+.qb .inp{width:100%;min-width:120px}
+.qb .inp.wide{min-width:260px}
+.nowrap{white-space:nowrap}
+.toast{position:fixed;bottom:64px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:20}
+.toast.show{opacity:.95}
+@media (max-width:700px){
+  header{position:static}
+  .grid2{grid-template-columns:1fr}
+  .card{grid-template-columns:1fr}
+  .actions{grid-template-columns:repeat(4,1fr);min-width:0}
+  .st{text-align:center;padding:5px 4px}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="top">
+      <div class="brand"><h1>Noble Search</h1><span class="tag">A job search portal for transitioning military and veterans</span></div>
+      <div class="nav" id="nav"><button data-view="jobs" class="on">Jobs</button><button data-view="search">Search</button><button data-view="profile">Profile</button><button data-view="settings">Settings</button></div>
+      <div class="sync" id="sync">Loading…</div>
+      <span class="jobsonly"><button class="btn" id="btnViewed" title="Clear all NEW badges">Mark all seen</button>
+      <a class="btn" href="/jobs/export.csv" style="text-decoration:none">Export CSV</a></span>
+    </div>
+    <div class="tabs jobsonly" id="tabs"></div>
+    <div class="filters jobsonly">
+      <input type="search" id="q" placeholder="Search title, company, notes…">
+      <select id="fit"><option value="">Any fit</option><option>High</option><option>Med</option><option>Low</option></select>
+      <select id="where"><option value="">Anywhere</option><option value="local">Near home</option><option value="remote">Remote</option></select>
+      <select id="sort"><option value="posted">Newest posted</option><option value="fit">Best fit</option><option value="closing">Closing soon</option><option value="company">Company</option></select>
+      <label class="chk"><input type="checkbox" id="onlyNew"> New only</label>
+    </div>
+  </div>
+</header>
+<main class="wrap" id="list"></main>
+<main class="wrap" id="view" hidden></main>
+<div class="toast" id="toast"></div>
+<footer class="legal">Noble Search &copy; 2026 Kenneth Haynes and <a href="https://cybercloudai.tech" target="_blank" rel="noopener">CyberCloudAI.tech</a>. Licensed under the <a href="https://polyformproject.org/licenses/noncommercial/1.0.0/" target="_blank" rel="noopener">PolyForm Noncommercial License 1.0.0</a>. Commercial use or reuse is prohibited without written permission.</footer>
+
+<script>
+const S = {findHTML:'', find:null, scr:{}, qsOpen:{}, jobs:[], tab:'inbox', view:'jobs', open:new Set(), drafts:{}, jd:{}, jdMsg:{}, prov:{}, show:{}, counts:{}, settings:null};
+const TABS = [
+  ['inbox','Inbox', j => !j.watch && j.status!=='dismissed'],
+  ['watch','Watchlist', j => j.watch],
+  ['applied','Applied+', j => ['applied','interviewing','offer'].includes(j.status)],
+  ['dismissed','Dismissed', j => j.status==='dismissed'],
+  ['all','All', j => true],
+];
+const STATUS_BTNS = [['interested','★ Interested'],['applied','Applied'],['interviewing','Interviewing'],['offer','Offer'],['dismissed','✕ Not for me']];
+const FITRANK = {High:0, Med:1, Low:2};
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function daysAgo(d){
+  if(!d || !/^\d{4}-\d{2}-\d{2}/.test(d)) return '';
+  const n = Math.round((Date.now() - new Date(d+'T12:00:00'))/864e5);
+  return n<=0 ? 'today' : n===1 ? '1 day ago' : `${n} days ago`;
+}
+function isLocal(j){ return /,\s*FL/i.test(j.location||'') && !/remote/i.test(j.work_mode||''); }
+function isRemote(j){ return /remote/i.test((j.work_mode||'')+' '+(j.location||'')); }
+function niceDay(d){ return new Date(d+'T12:00:00').toLocaleDateString([], {month:'short', day:'numeric'}); }
+function closingSoon(j){
+  const m = /^\d{4}-\d{2}-\d{2}/.exec(j.closing_date||''); if(!m) return false;
+  const d = (new Date(m[0]+'T23:59:59') - Date.now())/864e5; return d>=0 && d<=7;
+}
+
+async function load(){
+  const r = await fetch('/jobs/list'); const d = await r.json();
+  S.jobs = d.jobs; S.counts = d.draft_counts || {}; S.fitState = d.fit; S.setup = d.setup; renderSync(d.sync, d.search); render();
+}
+function renderSync(s, q){
+  const el = $('#sync'), parts = [];
+  let err = false;
+  if(q && q.status && q.status.running) parts.push(`Searching… ${q.status.current||''}`);
+  else if(q && q.last) parts.push(`Searched ${fmtTime(q.last.finished||q.last.started)} · ${q.last.added} new${q.last.status==='done'?'':' · '+q.last.status}`);
+  const f = S.fitState;
+  if(f && f.running) parts.unshift(`Rating fit ${f.done}/${f.total}…`);
+  else if(f && f.last_error && f.errors) { err = true; parts.push(`Fit rating problem: ${f.last_error}`); }
+  el.className = 'sync' + (err ? ' err' : '');
+  el.textContent = (parts.length ? parts.join(' · ') : 'Not searched yet') + ` · ${S.jobs.length} jobs`;
+  clearTimeout(S.syncPoll);
+  if(((q && q.status && q.status.running) || (f && f.running)) && S.view==='jobs') S.syncPoll = setTimeout(load, 15000);
+}
+function filterState(){
+  return {q:$('#q').value.trim().toLowerCase(), fit:$('#fit').value, where:$('#where').value, onlyNew:$('#onlyNew').checked};
+}
+function filtersOn(f){ return !!(f.q || f.fit || f.where || f.onlyNew); }
+function passFilters(j, f){
+  return (!f.fit || j.fit===f.fit) &&
+    (!f.where || (f.where==='local' ? isLocal(j) : isRemote(j))) &&
+    (!f.onlyNew || !j.viewed) &&
+    (!f.q || [j.title,j.company,j.location,j.notes,j.fit_reason,j.clearance].join(' ').toLowerCase().includes(f.q));
+}
+function filtered(){
+  const f = filterState();
+  const tabFn = TABS.find(t=>t[0]===S.tab)[2];
+  let a = S.jobs.filter(tabFn).filter(j => passFilters(j, f));
+  const s = $('#sort').value;
+  const pd = j => j.posted_date || '0000';
+  a.sort((x,y)=>
+    s==='fit' ? (FITRANK[x.fit]??3)-(FITRANK[y.fit]??3) || pd(y).localeCompare(pd(x)) :
+    s==='closing' ? (x.closing_date||'9999').localeCompare(y.closing_date||'9999') :
+    s==='company' ? x.company.localeCompare(y.company) :
+    pd(y).localeCompare(pd(x)) || (FITRANK[x.fit]??3)-(FITRANK[y.fit]??3));
+  return a;
+}
+function clearFilters(){
+  $('#q').value=''; $('#fit').value=''; $('#where').value=''; $('#onlyNew').checked=false; render();
+}
+function render(){
+  const f = filterState(), on = filtersOn(f);
+  $('#tabs').innerHTML = TABS.map(([k,l,fn]) => {
+    const all = S.jobs.filter(fn), shown = all.filter(j => passFilters(j, f));
+    const nn = shown.filter(j=>!j.viewed).length;
+    const count = on && shown.length !== all.length ? `${shown.length} of ${all.length}` : `${all.length}`;
+    return `<button class="tab ${S.tab===k?'on':''}" data-tab="${k}">${l}<span class="n">${count}${nn&&k!=='dismissed'?` · ${nn} new`:''}</span></button>`;
+  }).join('');
+  const a = filtered();
+  const tabAll = S.jobs.filter(TABS.find(t=>t[0]===S.tab)[2]).length;
+  const hidden = tabAll - a.length;
+  const banner = on && hidden > 0 ? `<div class="fbar">Filters are hiding ${hidden} job${hidden>1?'s':''} in this tab. <button class="linkbtn" id="btnClear">Clear filters</button></div>` : '';
+  $('#list').innerHTML = setupHTML() + banner + (a.length ? a.map(card).join('') :
+    `<div class="empty">${!S.jobs.length ? 'No jobs yet. Finish the getting-started steps above, then run a search.' : S.tab==='watch' && tabAll===0 ? 'Nothing on your watchlist yet. Click ★ Interested on any job to keep it here permanently.' : 'No jobs match these filters.'}</div>`);
+  const cb = document.getElementById('btnClear'); if(cb) cb.onclick = clearFilters;
+  const hs = document.getElementById('btnHideSetup'); if(hs) hs.onclick = () => { try{ localStorage.setItem('ns_hide_setup','1'); }catch{} render(); };
+}
+function setupHTML(){
+  const s = S.setup; if(!s || s.done) return '';
+  let hide = false; try{ hide = localStorage.getItem('ns_hide_setup')==='1'; }catch{}
+  if(hide && S.jobs.length) return '';
+  const n = s.steps.filter(x=>x.done).length;
+  return `<section class="setup"><div class="sh"><b>Getting started</b><span class="hint">${n} of ${s.steps.length} done</span><span style="flex:1"></span>
+      ${S.jobs.length?'<button class="linkbtn" id="btnHideSetup">Hide</button>':''}</div>
+    <ol>${s.steps.map(x=>`<li class="${x.done?'done':''}"><span class="ck">${x.done?'✓':''}</span><div><button class="linkbtn" data-view="${x.view}">${esc(x.label)}</button>
+      <div class="hint">${esc(x.hint)}</div></div></li>`).join('')}</ol></section>`;
+}
+function card(j){
+  const posted = j.posted_date ? `Posted ${esc(j.posted_date)} (${daysAgo(j.posted_date)})` : 'Posted date unverified';
+  const st = STATUS_BTNS.map(([s,l]) => `<button class="st ${j.status===s?'on':''}" data-s="${s}" data-k="${esc(j.job_key)}">${l}</button>`).join('');
+  return `<article class="card ${j.status==='dismissed'?'dim':''}" data-k="${esc(j.job_key)}">
+    <div class="main">
+    <div class="head">
+      ${j.fit?`<span class="pill fit-${esc(j.fit)}">${esc(j.fit)} fit</span>`:`<span class="pill unrated">${S.fitState&&S.fitState.running?'Rating soon…':'Not rated'}</span>`}
+      ${!j.viewed?'<span class="pill newb">NEW</span>':''}
+      ${j.open_status && j.open_status!=='Open'?`<span class="pill warn">${esc(j.open_status)}</span>`:''}
+      ${j.watch && !j.active?'<span class="pill warn">Over 30 days</span>':''}
+      <a class="title" href="${esc(j.link)}" target="_blank" rel="noopener" data-open="${esc(j.job_key)}">${esc(j.title)}</a>
+    </div>
+    <div class="sub"><b>${esc(j.company)}</b> · ${esc(j.location)}${j.work_mode?` · ${esc(j.work_mode)}`:''}</div>
+    <div class="meta">
+      <span>${posted}</span>
+      ${j.closing_date?`<span class="${closingSoon(j)?'close':''}">Closes ${esc(j.closing_date)}</span>`:''}
+      ${j.salary?`<span>${esc(j.salary)}</span>`:''}
+      ${j.clearance?`<span>Clearance: ${esc(j.clearance)}</span>`:''}
+      ${j.sources?`<span>via ${esc(j.sources)}</span>`:''}
+      ${!j.watch && j.expires && (j.status==='dismissed' || S.counts[j.job_key]) ? `<span class="${S.counts[j.job_key]?'close':''}">${S.counts[j.job_key]?'Job and drafts removed':'Removed'} ${esc(niceDay(j.expires))}${S.counts[j.job_key]?' — ★ to keep':''}</span>`:''}
+    </div>
+    ${j.fit_reason?`<div class="why">${esc(j.fit_reason)}${j.lane?` <span class="hint">· ${esc(j.lane)}</span>`:''}</div>`:''}
+    <div class="ratedby">${j.fit_by?`Fit by ${esc(j.fit_by)} · `:''}<button class="linkbtn" data-act="rate" data-k="${esc(j.job_key)}">${j.fit?'Re-rate':'Rate now'}</button></div>
+    </div>
+    <div class="actions">${st}<button class="draftbtn ${S.open.has(j.job_key)?'on':''}" data-draft="${esc(j.job_key)}">✎ Resume &amp; apply${S.counts[j.job_key]?` · ${S.counts[j.job_key]}`:''}</button></div>
+    <div class="notes"><textarea data-notes="${esc(j.job_key)}" placeholder="Notes — recruiter, contact, next step…">${esc(j.notes)}</textarea><div class="saved" id="sv-${esc(j.job_key)}"></div></div>
+    ${S.open.has(j.job_key) ? `<div class="dpanel" id="dp-${esc(j.job_key)}">${panelHTML(j.job_key)}</div>` : ''}
+  </article>`;
+}
+async function update(key, body){
+  const r = await fetch('/jobs/update', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({job_key:key, ...body})});
+  if(!r.ok) throw new Error('save failed');
+  const j = S.jobs.find(x=>x.job_key===key); if(j){ Object.assign(j, body); j.watch = ['interested','applied','interviewing','offer'].includes(j.status); }
+}
+document.addEventListener('click', async e => {
+  const t = e.target.closest('[data-tab],[data-s],[data-open],[data-draft],[data-view],[data-act]');
+  if(!t) return;
+  if(t.dataset.tab){ S.tab = t.dataset.tab; render(); return; }
+  if(t.classList.contains('st')){
+    const key = t.dataset.k, j = S.jobs.find(x=>x.job_key===key);
+    const next = j.status===t.dataset.s ? '' : t.dataset.s;
+    await update(key, {status: next, viewed: 1}); render(); return;
+  }
+  if(t.dataset.open){ update(t.dataset.open, {viewed:1}).then(render); return; }
+  if(t.dataset.draft !== undefined){ toggleDraft(t.dataset.draft); return; }
+  if(t.dataset.view){ setView(t.dataset.view); return; }
+  if(t.dataset.act){ onAct(t); return; }
+});
+const timers = {};
+document.addEventListener('input', e => {
+  if(e.target.dataset.jd !== undefined){ S.jd[e.target.dataset.jd] = e.target.value; return; }
+  if(e.target.dataset.prov !== undefined){ S.prov[e.target.dataset.prov] = e.target.value; return; }
+  if(e.target.dataset.scr !== undefined){ S.scr[e.target.dataset.scr] = e.target.value; S.qsOpen[e.target.dataset.scr] = true; return; }
+  const key = e.target.dataset.notes; if(key===undefined) return;
+  const v = e.target.value, sv = document.getElementById('sv-'+key);
+  if(sv) sv.textContent = 'Saving…';
+  clearTimeout(timers[key]);
+  timers[key] = setTimeout(async () => {
+    try{ await update(key, {notes: v, viewed: 1}); if(sv) sv.textContent = 'Saved'; }
+    catch{ if(sv) sv.textContent = 'Not saved — check connection'; }
+  }, 600);
+});
+['q','fit','where','sort','onlyNew'].forEach(id => $('#'+id).addEventListener('input', render));
+$('#btnViewed').onclick = async () => { await fetch('/jobs/mark-all-viewed',{method:'POST',body:'{}'}); S.jobs.forEach(j=>j.viewed=1); render(); };
+setInterval(() => { if(S.view==='jobs' && (!document.activeElement || !['TEXTAREA','INPUT','SELECT'].includes(document.activeElement.tagName))) load(); }, 10*60*1000);
+
+/* ============================== shared helpers ============================== */
+const api = async (path, body) => {
+  const r = await fetch(path, body===undefined ? {} : {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  const d = await r.json().catch(()=>({error:'Bad response'}));
+  if(!r.ok) throw new Error(d.error || ('HTTP '+r.status));
+  return d;
+};
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'), 2200); }
+const fmtTime = iso => iso ? new Date(iso).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '';
+async function loadSettings(){ try{ S.settings = await api('/settings'); }catch{} }
+function provOptions(sel){
+  const s = S.settings || {labels:{}};
+  const def = sel || s.provider || 'ollama';
+  return `<option value="ollama" ${def==='ollama'?'selected':''}>${esc(s.labels?.ollama || 'Local model')}</option>
+          <option value="anthropic" ${def==='anthropic'?'selected':''} ${s.anthropic_key_set?'':'disabled'}>${esc(s.labels?.anthropic || 'Claude API')}${s.anthropic_key_set?'':' (add key in Settings)'}</option>`;
+}
+
+/* ============================== views ============================== */
+function setView(v){
+  S.view = v;
+  document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.view===v));
+  document.querySelectorAll('.jobsonly').forEach(el => el.hidden = v!=='jobs');
+  $('#list').hidden = v!=='jobs'; $('#view').hidden = v==='jobs';
+  if(v==='profile') renderProfile();
+  if(v==='settings') renderSettings();
+  if(v==='search') renderSearch();
+  if(v==='jobs') load();
+  window.scrollTo(0,0);
+}
+
+/* ============================== drafts panel ============================== */
+async function toggleDraft(key){
+  if(S.open.has(key)){ S.open.delete(key); render(); return; }
+  S.open.add(key); update(key,{viewed:1}).catch(()=>{});
+  render(); await refreshDrafts(key);
+  if(!(S.jd[key]||'').trim()) autoJD(key);
+}
+async function refreshDrafts(key){
+  try{ const d = await api('/drafts/list?job_key='+encodeURIComponent(key)); S.drafts[key] = d.drafts; }catch(e){ S.drafts[key] = S.drafts[key]||[]; }
+  const el = document.getElementById('dp-'+key); if(el) el.innerHTML = panelHTML(key);
+  const busy = (S.drafts[key]||[]).some(d => ['queued','running'].includes(d.status));
+  clearTimeout(S['poll_'+key]);
+  if(busy && S.open.has(key)) S['poll_'+key] = setTimeout(()=>refreshDrafts(key), 4000);
+  else if(S.drafts[key]) S.counts[key] = S.drafts[key].filter(d=>d.status==='done').length;
+}
+function panelHTML(key){
+  const ds = S.drafts[key];
+  const msg = S.jdMsg[key];
+  const busy = (ds||[]).some(d => ['queued','running'].includes(d.status));
+  return `
+    <div class="row" style="justify-content:space-between"><h4>Tailored resume &amp; application text</h4>
+      <span class="hint">Built from your Profile. Never invents facts — numbers that aren't in your Profile are flagged.</span></div>
+    <div>
+      <div class="row" style="margin-bottom:6px"><span class="hint">Job description (makes the draft much sharper):</span>
+        <button class="btn sm" data-act="fetchjd" data-k="${esc(key)}">Fetch from posting</button>
+        ${msg?`<span class="hint ${msg.ok?'':'err'}">${esc(msg.text)}</span>`:''}</div>
+      <textarea class="jd" data-jd="${esc(key)}" placeholder="Paste the job description here (or click Fetch from posting).">${esc(S.jd[key]||'')}</textarea>
+    </div>
+    <details class="qs" ${S.qsOpen[key]?'open':''} data-qs="${esc(key)}"><summary class="hint">Screening questions from the application form (optional)</summary>
+      <textarea class="jd" style="min-height:70px" data-scr="${esc(key)}" placeholder="Paste the form's questions, one per line. Leave empty for the common ones (work authorization, clearance, salary…).">${esc(S.scr[key]||'')}</textarea></details>
+    <div class="row">
+      <select class="inp" data-prov="${esc(key)}">${provOptions(S.prov[key])}</select>
+      <button class="btn primary" data-act="gen" data-kind="resume" data-k="${esc(key)}" ${busy?'disabled':''}>${busy?'Working…':'Draft resume'}</button>
+      <button class="btn" data-act="gen" data-kind="application" data-k="${esc(key)}" ${busy?'disabled':''}>Draft application text</button>
+      <span class="hint">Local model takes 1–3 min each; you can keep working.</span>
+    </div>
+    ${ds===undefined ? '<div class="hint"><span class="spin"></span> Loading…</div>' :
+      ds.length ? ds.map(d => verHTML(key, d)).join('') : '<div class="hint">No drafts yet for this job.</div>'}`;
+}
+
+const LIMIT = 2000;
+function fieldText(a, path){
+  if(!a) return '';
+  if(path==='skills') return (a.skills||[]).join(', ');
+  const [k, i, f] = path.split('.');
+  if(i===undefined) return a[k]||'';
+  const it = (a[k]||[])[+i]||{};
+  return f ? (it[f]||'') : '';
+}
+async function copyText(txt){
+  try{ await navigator.clipboard.writeText(txt); }
+  catch{ const ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+}
+function fieldBox(key, d, label, path, opts={}){
+  const txt = fieldText(d.app, path), n = txt.length, over = n > (opts.limit||LIMIT);
+  return `<div class="fbox"><div class="fh"><b>${esc(label)}</b>${opts.sub?`<span class="hint">${esc(opts.sub)}</span>`:''}<span style="flex:1"></span>
+    <span class="cc ${over?'over':''}">${n.toLocaleString()} chars${over?' — over '+(opts.limit||LIMIT).toLocaleString():''}</span>
+    <button class="btn sm" data-act="copyf" data-id="${d.id}" data-k="${esc(key)}" data-path="${esc(path)}">Copy</button></div>
+    <div class="ftxt">${esc(txt)}</div></div>`;
+}
+function appHTML(key, d){
+  const a = d.app || {}, facts = d.facts || [];
+  const open = S.show[d.id];
+  const head = `<div class="row">
+      <button class="btn sm" data-act="view" data-id="${d.id}">${open?'Hide fields':'Show fields'}</button>
+      <button class="btn sm" data-act="copy" data-id="${d.id}" data-k="${esc(key)}">Copy all</button>
+      ${facts.length?`<span class="pill warn">${facts.length} number${facts.length>1?'s':''} to verify</span>`:`<span class="pill ok">All numbers traced to Profile</span>`}
+      ${(a.screening||[]).some(q=>q.verify)?`<span class="pill warn">Screening answers to confirm</span>`:''}</div>
+    ${facts.length?`<div class="hint">Not found in your Profile — confirm or remove:<ul>${facts.map(f=>`<li><b>${esc(f.value)}</b> — “${esc(f.context)}”</li>`).join('')}</ul></div>`:''}
+    ${kwHTML(d.keywords)}`;
+  if(!open) return head;
+  return head + `<div class="fields">
+    ${fieldBox(key, d, 'Summary / About you', 'summary')}
+    <h5>Work history (one entry per role)</h5>
+    ${(a.work_history||[]).map((w,i)=>fieldBox(key, d, `${w.job_title} — ${w.company}`, `work_history.${i}.description`, {sub:`${w.from} – ${w.to}${w.location?' · '+w.location:''}`})).join('')}
+    ${fieldBox(key, d, 'Skills', 'skills')}
+    ${fieldBox(key, d, 'Why this company?', 'why_company')}
+    <h5>Screening questions</h5>
+    ${(a.screening||[]).map((q,i)=>fieldBox(key, d, q.question, `screening.${i}.answer`, {sub:q.verify?'⚠ confirm before submitting':''})).join('')}
+    ${fieldBox(key, d, 'Cover letter', 'cover_letter', {limit:5000})}
+    ${a.notes_for_candidate?.length?`<div class="hint">Notes:<ul>${a.notes_for_candidate.map(n=>`<li>${esc(n)}</li>`).join('')}</ul></div>`:''}
+  </div>`;
+}
+function kwHTML(k){
+  if(!k) return '';
+  if(k.error) return `<div class="hint">${esc(k.error)}</div>`;
+  const chip = (x, cls) => `<span class="kw ${cls}">${esc(x.term)}${x.importance==='required'?' *':''}</span>`;
+  return `<div class="kwbox"><div class="hint"><b>Keyword check: ${k.score??'–'}% of the posting's key terms are in this draft</b> (* = required)</div>
+    ${k.add.length?`<div class="kwrow"><span class="kwl">Add — you have these:</span>${k.add.map(x=>chip(x,'add')).join('')}</div>`:''}
+    ${k.gap.length?`<div class="kwrow"><span class="kwl">Not in your Profile:</span>${k.gap.map(x=>chip(x,'gap')).join('')}</div>`:''}
+    ${k.covered.length?`<div class="kwrow"><span class="kwl">Covered:</span>${k.covered.map(x=>chip(x,'ok')).join('')}</div>`:''}</div>`;
+}
+function verHTML(key, d){
+  const st = d.status==='done' ? '' : d.status==='error' ? `<span class="pill bad">Failed</span>` :
+    `<span class="pill warn"><span class="spin"></span> ${d.status==='running'?'Writing…':'Queued'}</span>`;
+  let body = '';
+  if(d.status==='error') body = `<div class="hint err">${esc(d.error)}</div>`;
+  if(d.status==='done' && d.kind==='application'){
+    body = appHTML(key, d);
+  } else if(d.status==='done'){
+    const ats = d.ats || {checks:[]};
+    const issues = ats.checks.filter(c => c.level!=='ok');
+    const facts = d.facts || [];
+    body = `
+      <div class="row">
+        <a class="btn sm primary" href="/drafts/docx?id=${d.id}" style="text-decoration:none">Download .docx</a>
+        <button class="btn sm" data-act="copy" data-id="${d.id}" data-k="${esc(key)}">Copy text</button>
+        <button class="btn sm" data-act="view" data-id="${d.id}">${S.show[d.id]?'Hide text':'View text'}</button>
+        <span class="pill ${ats.pass?'ok':'bad'}">${ats.pass?'ATS check passed':'ATS issues'}${issues.length?` · ${issues.length} note${issues.length>1?'s':''}`:''}</span>
+        ${facts.length?`<span class="pill warn">${facts.length} number${facts.length>1?'s':''} to verify</span>`:`<span class="pill ok">All numbers traced to Profile</span>`}
+      </div>
+      ${facts.length?`<div class="hint">Not found in your Profile — confirm or remove before sending:<ul>${facts.map(f=>`<li><b>${esc(f.value)}</b> — “${esc(f.context)}”</li>`).join('')}</ul></div>`:''}
+      ${issues.length?`<div class="hint">ATS: <ul>${issues.map(c=>`<li>${esc(c.name)} — ${esc(c.detail)}</li>`).join('')}</ul></div>`:''}
+      ${kwHTML(d.keywords)}
+      ${d.notes?.length?`<div class="hint">Writer's notes:<ul>${d.notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul></div>`:''}
+      ${S.show[d.id]?`<pre>${esc(d.text)}</pre>`:''}`;
+  }
+  return `<div class="ver"><div class="vh"><b>${d.kind==='application'?'Application text':'Resume draft'} #${d.id}</b><span class="hint">${esc(d.provider==='anthropic'?'Claude API':'Local')} · ${esc(d.model)} · ${fmtTime(d.created)}</span>${st}
+    <span style="flex:1"></span><button class="linkbtn" data-act="del" data-id="${d.id}" data-k="${esc(key)}">Delete</button></div>${body}</div>`;
+}
+async function onAct(t){
+  const a = t.dataset.act, key = t.dataset.k, id = +t.dataset.id;
+  try{
+    if(a==='rate'){
+      await api('/jobs/rate', {job_key:key}); toast('Rating… takes about a minute on the local model');
+      S.fitState = {running:true, done:0, total:1}; setTimeout(load, 20000); return;
+    }
+    if(a==='fetchjd'){
+      t.disabled = true; S.jdMsg[key] = {ok:true, text:'Fetching…'}; refreshPanel(key);
+      const r = await api('/drafts/fetch-jd', {job_key:key, force:(S.jd[key]||'').trim()!==''});
+      if(r.ok || (r.text||'').length > 200) S.jd[key] = r.text;
+      S.jdMsg[key] = r.ok ? {ok:true, text:`Got ${r.text.length.toLocaleString()} characters from the ${r.source==='daily search'?'daily search':'posting'} — trim anything irrelevant.`} : {ok:false, text:r.reason};
+      refreshPanel(key);
+    }
+    if(a==='gen'){
+      const prov = S.prov[key] || (S.settings && S.settings.provider) || 'ollama';
+      if(!(S.jd[key]||'').trim() && !confirm('No job description yet. Draft from the title and company only?')) return;
+      const kind = t.dataset.kind || 'resume';
+      await api('/drafts/create', {job_key:key, jd_text:S.jd[key]||'', provider:prov, kind, questions:S.scr[key]||''});
+      toast(kind==='application' ? 'Application text queued' : 'Resume draft queued'); await refreshDrafts(key);
+    }
+    if(a==='view'){ S.show[id] = !S.show[id]; refreshPanel(t.closest('.dpanel').id.slice(3)); }
+    if(a==='copy'){
+      const d = (S.drafts[key]||[]).find(x=>x.id===id);
+      await copyText(d.text); toast(d.kind==='application'?'All application text copied':'Resume text copied');
+    }
+    if(a==='copyf'){
+      const d = (S.drafts[key]||[]).find(x=>x.id===id);
+      await copyText(fieldText(d.app, t.dataset.path)); toast('Copied'); return;
+    }
+    if(a==='del'){
+      if(!confirm('Delete this draft?')) return;
+      await api('/drafts/delete', {id}); await refreshDrafts(key);
+    }
+    if(a && a.startsWith('p_')) await onProfileAct(a, t);
+    if(a && a.startsWith('s_')) await onSettingsAct(a, t);
+    if(a && a.startsWith('q_')) await onSearchAct(a, t);
+  }catch(e){ toast(e.message); }
+  finally{ if(a==='fetchjd') t.disabled = false; }
+}
+document.addEventListener('change', async e => {
+  const t = e.target.closest('[data-act-change]'); if(!t) return;
+  try{ await onSearchAct(t.dataset.actChange, t); }catch(err){ toast(err.message); }
+});
+async function autoJD(key){
+  const j = S.jobs.find(x=>x.job_key===key);
+  if(!j || !j.has_description) return;               // only auto-load text the daily search saved
+  try{
+    const r = await api('/drafts/fetch-jd', {job_key:key});
+    if(r.ok && !(S.jd[key]||'').trim()){ S.jd[key] = r.text; S.jdMsg[key] = {ok:true, text:`Loaded from the daily search (${r.text.length.toLocaleString()} characters).`}; refreshPanel(key); }
+  }catch{}
+}
+function refreshPanel(key){ const el = document.getElementById('dp-'+key); if(el) el.innerHTML = panelHTML(key); }
+
+/* ============================== profile ============================== */
+const PF = [['full_name','Full name'],['city_state','City, State'],['phone','Phone'],['email','Email'],['linkedin','LinkedIn URL'],['clearance','Clearance (as you want it shown)']];
+const PREF = [['home_location','Home location (for commute radius)'],['radius_miles','Radius (miles)'],['work_modes','Work modes'],['employment_types','Employment types'],
+  ['levels','Target levels','ta'],['lanes','Target role lanes','ta'],['target_employers','Target employers','ta'],['notes','Anything else a writer should know','ta']];
+async function renderProfile(){
+  const v = $('#view'); v.innerHTML = '<div class="empty"><span class="spin"></span></div>';
+  const d = await api('/profile'); S.profile = d;
+  const f = (k,l,t) => t==='ta' ? `<label class="fld full">${l}<textarea data-pf="${k}">${esc(d.profile[k])}</textarea></label>`
+                                : `<label class="fld">${l}<input data-pf="${k}" value="${esc(d.profile[k])}"></label>`;
+  const inv = d.inventory_drafts && d.inventory_drafts[0];
+  v.innerHTML = `<div class="page">
+    <section class="box"><h2>Contact & basics</h2><div class="hint">Printed at the top of every draft. Kept on this server only.</div>
+      <div class="grid2">${PF.map(([k,l])=>f(k,l)).join('')}</div>
+      <div class="row" style="margin-top:12px"><button class="btn primary" data-act="p_save">Save</button></div></section>
+
+    <section class="box"><h2>Resumes</h2><div class="hint">Upload your current resume(s) as .docx. The one marked <b>Layout template</b> sets the fonts, margins and footer of every draft.</div>
+      <div class="rlist">${d.resumes.length ? d.resumes.map(r=>`<div class="ritem"><span class="nm">${esc(r.name)}</span><span class="hint">${(r.size/1024).toFixed(0)} KB · ${fmtTime(r.uploaded)}</span>
+          <label class="radio"><input type="radio" name="tpl" data-act="p_tpl" data-name="${esc(r.name)}" ${r.is_template?'checked':''}> Layout template</label>
+          <button class="linkbtn" data-act="p_delres" data-name="${esc(r.name)}">Remove</button></div>`).join('') : '<div class="hint">No resumes uploaded yet.</div>'}</div>
+      <label class="btn" style="display:inline-block">Upload .docx<input type="file" id="upl" accept=".docx" multiple hidden></label></section>
+
+    <section class="box"><h2>Career inventory</h2>
+      <div class="hint">The full story drafts are written from — every role, scope (people, budget, users, sites), metrics, and civilian translations of military titles. More detail here = better drafts. Drafts only use numbers that appear here or in your resumes.</div>
+      <textarea class="inv" id="inv" spellcheck="true">${esc(d.inventory)}</textarea>
+      <div class="row" style="margin-top:10px"><button class="btn primary" data-act="p_saveinv">Save inventory</button><span class="hint" id="invstat">${d.inventory.length.toLocaleString()} characters</span>
+        <span style="flex:1"></span>
+        <select class="inp" id="invprov">${provOptions()}</select>
+        <button class="btn" data-act="p_buildinv">Draft an inventory from my resumes</button></div>
+      ${inv ? `<div class="ver" style="margin-top:10px"><div class="vh"><b>Generated inventory draft</b><span class="hint">${esc(inv.model)} · ${fmtTime(inv.created)}</span>
+          ${inv.status==='done'?'':inv.status==='error'?'<span class="pill bad">Failed</span>':'<span class="pill warn"><span class="spin"></span> Writing…</span>'}</div>
+          ${inv.status==='error'?`<div class="hint err">${esc(inv.error)}</div>`:''}
+          ${inv.status==='done'?`<div class="row"><button class="btn sm" data-act="p_useinv">Replace my inventory with this</button><button class="btn sm" data-act="p_appinv">Append to my inventory</button></div><pre>${esc(inv.text)}</pre>`:''}</div>` : ''}
+    </section>
+
+    <section class="box"><h2>Search preferences</h2><div class="hint">Home location, radius and work modes drive the daily search (towns near home are listed on the Search page). Levels, lanes and notes guide the resume writer.</div>
+      <div class="grid2">${PREF.map(([k,l,t])=>f(k,l,t)).join('')}</div>
+      <div class="row" style="margin-top:12px"><button class="btn primary" data-act="p_save">Save</button></div></section>
+  </div>`;
+  $('#upl').onchange = uploadResumes;
+  $('#inv').oninput = () => { $('#invstat').textContent = 'Unsaved changes'; };
+  if(inv && ['queued','running'].includes(inv.status)){ clearTimeout(S.invPoll); S.invPoll = setTimeout(()=>{ if(S.view==='profile') renderProfileKeep(); }, 5000); }
+}
+async function renderProfileKeep(){ const cur = $('#inv') && $('#inv').value; const dirty = $('#invstat') && $('#invstat').textContent==='Unsaved changes';
+  await renderProfile(); if(dirty && cur!==undefined){ $('#inv').value = cur; $('#invstat').textContent='Unsaved changes'; } }
+async function uploadResumes(e){
+  for(const file of e.target.files){
+    if(!file.name.toLowerCase().endsWith('.docx')){ toast(file.name+': only .docx'); continue; }
+    const b64 = await new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result.split(',')[1]); fr.onerror=rej; fr.readAsDataURL(file); });
+    try{ await api('/profile/upload', {filename:file.name, data_b64:b64}); toast('Uploaded '+file.name); }catch(err){ toast(file.name+': '+err.message); }
+  }
+  renderProfile();
+}
+async function onProfileAct(a, t){
+  if(a==='p_save'){
+    const p = {}; document.querySelectorAll('[data-pf]').forEach(el => p[el.dataset.pf] = el.value);
+    await api('/profile/save', {profile:p}); toast('Profile saved');
+  }
+  if(a==='p_saveinv'){ await api('/profile/save', {inventory:$('#inv').value}); $('#invstat').textContent = 'Saved · '+$('#inv').value.length.toLocaleString()+' characters'; toast('Inventory saved'); }
+  if(a==='p_tpl'){ await api('/profile/set-template', {name:t.dataset.name}); toast('Layout template set'); }
+  if(a==='p_delres'){ if(!confirm('Remove '+t.dataset.name+'?')) return; await api('/profile/delete-resume', {name:t.dataset.name}); renderProfile(); }
+  if(a==='p_buildinv'){ await api('/profile/build-inventory', {provider:$('#invprov').value}); toast('Inventory draft queued'); renderProfileKeep(); }
+  if(a==='p_useinv' || a==='p_appinv'){
+    const inv = S.profile.inventory_drafts[0].text;
+    const cur = $('#inv').value;
+    if(a==='p_useinv' && cur.trim() && !confirm('Replace your current inventory?')) return;
+    $('#inv').value = a==='p_useinv' ? inv : (cur.trim() ? cur.trimEnd()+'\n\n'+inv : inv);
+    $('#invstat').textContent = 'Unsaved changes'; toast('Review, then Save inventory');
+  }
+}
+
+/* ============================== settings ============================== */
+const L = (href, text) => `<a href="${href}" target="_blank" rel="noopener">${text}</a>`;
+function howto(open, steps){
+  return `<details class="howto" ${open?'open':''}><summary>How to set this up</summary><ol>${steps.map(x=>`<li>${x}</li>`).join('')}</ol></details>`;
+}
+function testRow(kind, src, label){
+  return `<div class="row" style="margin-top:10px"><button class="btn" data-act="${kind}" data-src="${src}" data-p="${src}">${label}</button><span class="hint" id="t_${src}"></span></div>`;
+}
+async function renderSettings(){
+  const v = $('#view'); await loadSettings(); const s = S.settings;
+  const q = await api('/search'); S.search = q; const c = q.config;
+  const sq = (k, l, attrs='') => `<label class="fld">${l}<input data-sq="${k}" value="${esc(c[k])}" ${attrs}></label>`;
+  const secret = (k, setKey, l, ph) => `<label class="fld">${l}<input data-sqs="${k}" type="password" autocomplete="new-password" placeholder="${c[setKey]?esc(c[k])+' (saved — paste to replace)':ph}"></label>`;
+  v.innerHTML = `<div class="page">
+    <h3 class="sect">AI model</h3>
+    <section class="box"><h2>Claude API key <span class="hint">(required — this is what reads jobs and writes your drafts)</span></h2>
+      ${howto(!s.anthropic_key_set, [`Go to ${L('https://platform.claude.com/','platform.claude.com')} and create an account (this is separate from a Claude.ai chat subscription).`,
+        `Add prepaid credit under ${L('https://platform.claude.com/settings/billing','Settings → Billing')}. $5–$10 is plenty to start; see the README for typical costs. New credit can take a few minutes to apply.`,
+        `Open ${L('https://platform.claude.com/settings/workspaces/default/keys','Settings → API keys')}, click <b>Create key</b>, name it "Noble Search", and copy it (it is shown only once).`,
+        'Paste it below, then click <b>Save &amp; test</b>. "Credit balance too low" means the credit has not applied yet, or it was added to a different organization.'])}
+      <div class="grid2">
+        <label class="fld">API key<input data-set="anthropic_api_key" type="password" autocomplete="off" placeholder="${s.anthropic_key_set?esc(s.anthropic_api_key)+' (saved — paste to replace)':'sk-ant-…'}"></label>
+        <div></div>
+        <label class="fld">Model for resumes &amp; applications<input data-set="anthropic_model" value="${esc(s.anthropic_model)}" list="amodels"></label>
+        <label class="fld">Model for fit rating (runs on every new job — a small model keeps it cheap)<input data-set="anthropic_fit_model" value="${esc(s.anthropic_fit_model)}" list="amodels"></label>
+        <datalist id="amodels"><option value="claude-sonnet-5-5"><option value="claude-opus-5-5"><option value="claude-haiku-4-5-20251001"></datalist>
+      </div>
+      <div class="row" style="margin-top:10px"><button class="btn" data-act="s_test" data-p="anthropic">Save &amp; test</button><span class="hint" id="t_anthropic"></span>
+        ${s.anthropic_key_set?'<button class="linkbtn" data-act="s_clearkey">Remove key</button>':''}</div></section>
+    <details class="box adv" ${(s.provider==='ollama'||c.fit_provider==='ollama')?'open':''}><summary><b>Advanced: run a local model instead (Ollama)</b> <span class="hint">— free and private, but needs a strong graphics card and is much slower</span></summary>
+      <div class="grid2" style="margin-top:10px">
+        <div class="fld">Resume &amp; application writing<div class="row" style="gap:14px">
+          <label class="radio"><input type="radio" name="prov" value="anthropic" ${s.provider!=='ollama'?'checked':''}> Claude API</label>
+          <label class="radio"><input type="radio" name="prov" value="ollama" ${s.provider==='ollama'?'checked':''}> Local model</label></div></div>
+        <div class="fld">Fit rating after each search<div class="row" style="gap:14px">
+          <label class="radio"><input type="radio" name="fitp" value="anthropic" ${c.fit_provider==='anthropic'?'checked':''}> Claude API</label>
+          <label class="radio"><input type="radio" name="fitp" value="ollama" ${c.fit_provider==='ollama'?'checked':''}> Local model</label>
+          <label class="radio"><input type="radio" name="fitp" value="off" ${c.fit_provider==='off'?'checked':''}> Off</label></div></div>
+      </div>
+      ${howto(false, [`Install Ollama: ${L('https://ollama.com/download','ollama.com/download')}.`,
+        'Download a model, for example <code>ollama pull qwen3:14b</code> (bigger models write better but need more graphics memory).',
+        'If Ollama runs on this same computer, keep the address <code>http://host.docker.internal:11434</code>. If it runs on another computer, set <code>OLLAMA_HOST=0.0.0.0</code> there and enter that computer\'s address, e.g. http://192.168.1.50:11434.',
+        'Click Test connection — it lists the models it finds. Then pick "Local model" above and Save settings.'])}
+      <div class="grid2">
+        <label class="fld">Ollama URL<input data-set="ollama_url" value="${esc(s.ollama_url)}" placeholder="http://host.docker.internal:11434"></label>
+        <label class="fld">Model<input data-set="ollama_model" value="${esc(s.ollama_model)}" list="omodels" placeholder="qwen3:14b"><datalist id="omodels">${(S.omodels||[]).map(m=>`<option value="${esc(m)}">`).join('')}</datalist></label>
+        <label class="fld">Context window (tokens)<input data-set="ollama_num_ctx" type="number" min="4096" step="1024" value="${esc(s.ollama_num_ctx)}"></label>
+        <label class="fld">Creativity (0 = strict, 1 = loose)<input data-set="temperature" type="number" min="0" max="1" step="0.05" value="${esc(s.temperature)}"></label>
+      </div>
+      ${testRow('s_test','ollama','Test connection')}</details>
+
+    <h3 class="sect">Job data sources</h3>
+    <section class="box"><h2>USAJOBS (federal jobs, free)</h2>
+      ${howto(!c.usajobs_key_set, [`Request a key at ${L('https://developer.usajobs.gov/apirequest/','developer.usajobs.gov/apirequest')} (if that page errors, use the API Request link on ${L('https://developer.usajobs.gov/','developer.usajobs.gov')}).`,
+        'The key arrives by email within minutes.',
+        'Paste it below with <b>the same email</b> you registered — USAJOBS checks that they match.',
+        'Click Test USAJOBS key.'])}
+      <div class="grid2">${secret('usajobs_api_key','usajobs_key_set','API key','Paste your USAJOBS key')}${sq('usajobs_email','Email registered with the key')}</div>
+      ${testRow('s_qtest','usajobs','Test USAJOBS key')}</section>
+    <section class="box"><h2>Job boards — JSearch (optional)</h2>
+      <div class="hint">One key adds Indeed, LinkedIn, ZipRecruiter, Glassdoor and company sites. What it searches for is set on the Search page.</div>
+      ${howto(!c.jsearch_key_set, [`Open ${L('https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch','JSearch on RapidAPI')} and sign in (or buy direct from ${L('https://www.openwebninja.com/api/jsearch','OpenWeb Ninja')}).`,
+        'On the Pricing tab subscribe to the free Basic plan (200 requests a month).',
+        'Copy the <code>X-RapidAPI-Key</code> shown on the API page and paste it below; pick where you got it.',
+        'Click Test JSearch key (uses 1 request).'])}
+      <div class="grid2">
+        <label class="fld">Where you got the key<select data-sq="jsearch_provider"><option value="rapidapi" ${c.jsearch_provider==='rapidapi'?'selected':''}>RapidAPI (rapidapi.com)</option><option value="openwebninja" ${c.jsearch_provider==='openwebninja'?'selected':''}>OpenWeb Ninja (direct)</option></select></label>
+        ${secret('jsearch_api_key','jsearch_key_set','API key','Paste your JSearch key')}
+      </div>
+      ${testRow('s_qtest','jsearch','Test JSearch key (uses 1 request)')}</section>
+
+    <h3 class="sect">Notifications</h3>
+    <section class="box"><h2>Morning email</h2>
+      <div class="hint">After each scheduled search, once ratings are done: new High and Med jobs with reason and gap, Low ones as a list, and any sources that failed. Sent from your own email account.</div>
+      ${howto(!c.smtp_password_set, [`Gmail: turn on ${L('https://myaccount.google.com/signinoptions/twosv','2-Step Verification')} if it isn't already.`,
+        `Create an app password at ${L('https://myaccount.google.com/apppasswords','myaccount.google.com/apppasswords')} — name it "Noble Search" and copy the 16 letters.`,
+        'Enter your Gmail address as the sending account, paste the app password (spaces are fine), and click Send a test email.',
+        'Other providers: use their SMTP server and port (587, or 465) and an app password if they offer one.'])}
+      <div class="grid2">
+        <label class="radio"><input type="checkbox" data-sqb="email_enabled" ${c.email_enabled?'checked':''}> Send the morning email</label>
+        <label class="radio"><input type="checkbox" data-sqb="email_manual_runs" ${c.email_manual_runs?'checked':''}> Also email after "Run now"</label>
+        ${sq('email_to','Send to','placeholder="you@gmail.com"')}
+        ${sq('smtp_user','Sending account (your Gmail address)','placeholder="you@gmail.com" autocomplete="off"')}
+        ${secret('smtp_password','smtp_password_set','App password','16-character app password')}
+        ${sq('dashboard_url','Dashboard link in the email')}
+        ${sq('smtp_host','Mail server')}
+        ${sq('smtp_port','Port (587 or 465)','type="number"')}
+      </div>
+      ${testRow('s_qtest','email','Send a test email')}</section>
+    <section class="box"><h2>Phone push (optional)</h2>
+      ${howto(false, [`Install the free ntfy app (${L('https://ntfy.sh','ntfy.sh')}) on your phone.`,
+        'Subscribe to a topic with a hard-to-guess name, e.g. <code>noble-search-7f3k9</code> (anyone who knows the name can read it).',
+        'Enter https://ntfy.sh and the same topic below. The push arrives with the morning email.'])}
+      <div class="grid2">${sq('ntfy_url','ntfy server','placeholder="https://ntfy.sh"')}${sq('ntfy_topic','Topic','placeholder="a hard-to-guess name"')}</div></section>
+
+    <h3 class="sect">Saved drafts</h3>
+    <section class="box"><h2>Draft library</h2>
+      <div class="hint">Drafts live as long as their job. Jobs on your watchlist (Interested, Applied, Interviewing, Offer) are kept until you change their status. Every other job — including Dismissed — is removed 30 days after it was posted (or last seen), and its resumes and application text are deleted with it. Star a job or download a draft to keep it.</div>
+      <div class="row" style="margin-top:10px"><a class="btn" href="/drafts/library" target="_blank" rel="noopener" style="text-decoration:none">Open draft library ↗</a>
+        <span class="hint">Every draft by job, with time left before removal and downloads.</span></div></section>
+
+    <div class="row"><button class="btn primary" data-act="s_save">Save settings</button></div>
+  </div>`;
+}
+function collectSettings(){
+  const d = {}; document.querySelectorAll('[data-set]').forEach(el => { if(el.value!=='' || el.dataset.set!=='anthropic_api_key') d[el.dataset.set] = el.value; });
+  const p = document.querySelector('input[name=prov]:checked'); if(p) d.provider = p.value; return d;
+}
+function collectSearchSettings(){
+  const d = {};
+  document.querySelectorAll('[data-sq]').forEach(el => d[el.dataset.sq] = el.value);
+  document.querySelectorAll('[data-sqb]').forEach(el => d[el.dataset.sqb] = el.checked);
+  document.querySelectorAll('[data-sqs]').forEach(el => { const v = el.value.replace(/\s+/g,''); if(v) d[el.dataset.sqs] = v; });
+  const f = document.querySelector('input[name=fitp]:checked'); if(f) d.fit_provider = f.value;
+  return d;
+}
+async function saveAllSettings(){ await api('/settings/save', collectSettings()); await api('/search/save', collectSearchSettings()); }
+async function onSettingsAct(a, t){
+  if(a==='s_save'){ await saveAllSettings(); toast('Settings saved'); renderSettings(); }
+  if(a==='s_clearkey'){ if(!confirm('Remove the saved Claude API key?')) return; await api('/settings/save', {anthropic_api_key:'CLEAR'}); renderSettings(); }
+  if(a==='s_test' || a==='s_qtest'){
+    const p = t.dataset.p;
+    if(p==='anthropic' && !S.settings.anthropic_key_set && !document.querySelector('[data-set=anthropic_api_key]').value.trim()){
+      const out = $('#t_anthropic'); out.className='hint err'; out.textContent='✗ Paste your Claude API key first.'; return;
+    }
+    $('#t_'+p).className='hint'; $('#t_'+p).innerHTML = '<span class="spin"></span> Saving and testing…';
+    await saveAllSettings();
+    const r = a==='s_test' ? await api('/settings/test', {provider:p}) : await api('/search/test', {source:p});
+    if(r.models) S.omodels = r.models;
+    await renderSettings();  // re-draw so newly saved keys show as saved
+    const out = $('#t_'+p); out.className = 'hint'+(r.ok?'':' err');
+    out.textContent = (r.ok?'✓ ':'✗ ')+r.detail+(r.sample&&r.sample.length?' — e.g. '+r.sample.join(' · '):'');
+  }
+}
+
+/* ============================== search ============================== */
+const QDAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const QTYPES = [['auto','Detect from link'],['workday','Workday'],['greenhouse','Greenhouse'],['lever','Lever'],['ashby','Ashby'],['smartrecruiters','SmartRecruiters'],['bamboohr','BambooHR'],['eightfold','Eightfold'],['sitemap','Career site (sitemap)'],['off','Off']];
+async function renderSearch(keep){
+  const v = $('#view'); if(!keep) v.innerHTML = '<div class="empty"><span class="spin"></span></div>';
+  const d = await api('/search'); S.search = d; const c = d.config, st = d.status;
+  if(!keep || !S.qBoards) S.qBoards = d.boards.map(b=>({...b}));
+  const run = d.runs[0];
+  const days = new Set(String(c.days||'').split(',').map(x=>x.trim()));
+  const missing = [!c.usajobs_key_set && 'USAJOBS key', !c.jsearch_key_set && 'JSearch key', !c.email_enabled && 'morning email'].filter(Boolean);
+  const checked = run ? run.detail.reduce((n,x)=>n+(+x.scanned||0),0) : 0;
+  const bad = run ? run.detail.filter(x=>x.ok===false).length : 0;
+  const runTable = run ? `<details class="runlog" ${S.runOpen?'open':''}>
+      <summary><span class="hint">${esc(run.trigger==='scheduled'?'Scheduled':'Manual')} run · ${fmtTime(run.started)}${run.finished?' – '+fmtTime(run.finished).replace(/^.*, /,''):''} ·
+        <b>${checked.toLocaleString()}</b> jobs checked · <b>${run.found}</b> matching · <b>${run.added}</b> new · ${run.updated} updated · ${esc(run.status)}${bad?` · <span class="err">${bad} source${bad>1?'s':''} failed</span>`:''}${run.emailed?' · email: '+esc(run.emailed):''}</span></summary>
+      <div style="overflow-x:auto"><table class="qt"><thead><tr><th>Source</th><th>Read as</th><th class="num">Checked</th><th class="num">Title match</th><th class="num">Kept</th><th class="num">New</th><th class="num">Secs</th><th>Notes</th></tr></thead><tbody>
+      ${run.detail.map(x=>`<tr class="${x.ok===false?'bad':''}"><td>${esc(x.name)}</td><td>${esc(d.readers[x.type]||x.type)}</td><td class="num">${x.scanned??''}</td><td class="num">${x.title_matches??''}</td><td class="num">${x.kept??''}</td><td class="num">${x.added??''}</td><td class="num">${x.seconds??''}</td>
+        <td>${x.skipped?`<span class="hint">${esc(x.skipped)}</span>`:''}${(x.errors||[]).length?`<span class="err">${esc(x.errors.join(' · '))}</span>`:''}</td></tr>`).join('')}
+      </tbody></table></div></details>` : '<div class="hint">No searches yet. Click Run now to try it.</div>';
+  v.innerHTML = `<div class="page">
+    <section class="box"><h2>Daily search</h2>
+      <div class="hint">Runs on this server. Reads each employer's own hiring system, USAJOBS and the job boards, keeps senior roles near home or remote, rates them, and adds them to your Jobs list. Your statuses and notes are never changed. Keys, models and email are on the <button class="linkbtn" data-view="settings">Settings</button> page.</div>
+      ${missing.length?`<div class="fbar" style="margin-top:8px">Not set up yet: ${missing.join(', ')}. <button class="linkbtn" data-view="settings">Open Settings</button></div>`:''}
+      <div class="row" style="margin:8px 0">
+        ${st.running?`<span class="pill warn"><span class="spin"></span> Running · ${esc(st.current)}</span>`:`<button class="btn primary" data-act="q_run">Run now</button>`}
+        ${d.fit.running?`<span class="pill warn"><span class="spin"></span> Rating ${d.fit.done}/${d.fit.total}</span>`:(d.unrated?`<button class="btn" data-act="q_rate">Rate ${d.unrated} unrated job${d.unrated===1?'':'s'}</button>`:'')}
+        <span class="hint">${c.enabled ? (d.next_run?'Next scheduled run: '+fmtTime(d.next_run):'') : 'Schedule is off'}</span>
+        ${d.fit.errors?`<span class="hint err">Rating: ${d.fit.errors} failed · ${esc(d.fit.last_error)}</span>`:''}
+      </div>
+      ${runTable}
+    </section>
+    <section class="box"><h2>Schedule</h2>
+      <div class="grid2">
+        <label class="radio"><input type="checkbox" id="q_enabled" ${c.enabled?'checked':''}> Run automatically</label>
+        <label class="fld">Time (24-hour)<input id="q_time" type="time" value="${esc(c.run_time)}"></label>
+        <div class="fld full">Days<div class="row" style="gap:12px">${QDAYS.map(x=>`<label class="radio"><input type="checkbox" data-qday="${x}" ${days.has(x)?'checked':''}> ${x}</label>`).join('')}</div></div>
+        <label class="fld">Time zone<input id="q_tz" value="${esc(c.timezone)}" placeholder="America/New_York"></label>
+        <label class="fld">Only jobs posted in the last (days)<input id="q_age" type="number" min="1" max="60" value="${esc(c.max_age_days)}"></label>
+      </div></section>
+    <section class="box info"><h2>Where the job-board search looks</h2>
+      <div class="hint">JSearch reads <b>Google for Jobs</b> — Google's index of public job postings — so one search covers:</div>
+      <ul class="srcs">
+        <li><b>LinkedIn</b></li><li><b>Indeed</b></li><li><b>Glassdoor</b></li><li><b>ZipRecruiter</b></li>
+        <li>Other public boards Google indexes, such as Monster, CareerBuilder, SimplyHired, BeBee and Jobrapido</li>
+        <li>Company career sites (Workday, Greenhouse, Lever and similar)</li></ul>
+      <div class="hint">It does <b>not</b> include USAJOBS (searched separately with your USAJOBS key) or postings only visible after signing in. Each card shows the board a job came from, e.g. “JSearch (LinkedIn)”.${(d.jsearch_publishers||[]).length?` <b>Boards in your current results:</b> ${d.jsearch_publishers.slice(0,12).map(([n,k])=>`${esc(n)} (${k})`).join(', ')}.`:''}
+      ${c.jsearch_key_set?'':' <b>Add a JSearch key on <button class="linkbtn" data-view="settings">Settings</button> to turn it on.</b>'}</div>
+    </section>
+    <section class="box"><h2>Employers</h2>
+      <div class="hint">The search reads these employers' own hiring systems directly — often days before jobs reach the job boards.</div>
+      <div class="finder">
+        <div class="fh2"><b>Add an employer by name</b><span class="hint">Type the company; the dashboard finds its job list and how to read it.</span></div>
+        <div class="row">
+          <input class="inp" id="f_name" placeholder="Company name, e.g. Booz Allen Hamilton" style="flex:2;min-width:200px">
+          <input class="inp" id="f_site" placeholder="Website (optional), e.g. boozallen.com" style="flex:1;min-width:160px">
+          <button class="btn primary" data-act="q_find">Find it</button>
+        </div>
+        <div id="f_out">${S.findHTML||''}</div>
+      </div>
+      <details class="howto"><summary>Add one by hand instead</summary><ol>
+        <li>Open the company's careers page and click the button that shows the job list (often "Search jobs" or "View openings").</li>
+        <li>Copy the address from the browser bar. Workday addresses look like <code>company.wd1.myworkdayjobs.com/External</code>.</li>
+        <li>Click <b>Add employer manually</b> below, type the name and paste the address. "Detect from link" works out how to read it.</li>
+        <li>Click <b>Run</b> on that row to check it reads jobs.</li></ol></details>
+      <div style="overflow-x:auto"><table class="qt qb"><thead><tr><th>Company</th><th>Job search link</th><th>Read as</th><th></th></tr></thead><tbody id="qboards">${S.qBoards.map(boardRow).join('')}</tbody></table></div>
+      <div class="row" style="margin-top:8px"><button class="btn" data-act="q_addb">Add employer manually</button></div>
+    </section>
+    <section class="box"><h2>Job-board searches (JSearch)</h2>
+      <div class="hint">Each line is one search; {home} is your home town; lines with "remote" look for remote jobs anywhere. Each line uses one request per run.${c.jsearch_key_set?'':' <b>Add your JSearch key on Settings to turn this on.</b>'}</div>
+      <div class="grid2">
+        <label class="fld full">Searches (one per line)<textarea id="q_jq" rows="7" placeholder="director information technology in {home}
+chief information security officer remote">${esc(c.jsearch_queries)}</textarea></label>
+        <div class="row full"><button class="btn" data-act="q_suggest" data-what="searches">✨ Suggest searches from my Profile</button><span class="hint" id="sg_searches"></span></div>
+        <label class="fld">Result pages per search (10 jobs each)<input id="q_jpages" type="number" min="1" max="5" value="${esc(c.jsearch_pages)}"></label>
+        <div class="fld"><span>Estimated use</span><b style="color:var(--ink)">about ${d.jsearch_monthly} requests a month</b><span class="hint">Free plans allow 200 a month.</span></div>
+      </div></section>
+    <section class="box"><h2>What counts as a match</h2>
+      <div class="grid2">
+        <label class="fld full">Start from a preset<select id="q_preset" data-act-change="q_preset"><option value="">Choose a level…</option>${Object.entries(d.title_presets||{}).map(([k,p])=>`<option value="${k}">${esc(p.label)}</option>`).join('')}</select>
+          <span class="hint">Fills the list below; edit it any way you like. "*" means any title.</span></label>
+        <label class="fld">Title must contain one of (one per line)<textarea id="q_inc" rows="10">${esc(c.title_include)}</textarea></label>
+        <label class="fld">Skip titles containing (one per line)<textarea id="q_exc" rows="10">${esc(c.title_exclude)}</textarea></label>
+        <label class="fld full">Towns that count as near home (one per line, "Town, ST")<textarea id="q_places" rows="6" placeholder="Leave empty to use only your home town from the Profile">${esc(c.local_places)}</textarea>
+          <span class="row" style="margin:4px 0"><button class="btn" type="button" data-act="q_suggest" data-what="towns">✨ Suggest towns near my home</button><span class="hint" id="sg_towns"></span></span>
+          <span class="hint">Remote jobs are kept too when your Profile work modes include Remote. Lines are matched as words; advanced users can use regular expressions.</span></label>
+        <label class="fld">Federal jobs: lowest grade to keep (GS)<input id="q_ugrade" type="number" min="1" max="15" value="${esc(c.usajobs_min_grade)}"></label>
+      </div></section>
+    <div class="row"><button class="btn primary" data-act="q_save">Save search settings</button></div>
+  </div>`;
+  const rl = v.querySelector('details.runlog'); if(rl) rl.addEventListener('toggle', () => { S.runOpen = rl.open; });
+  clearTimeout(S.qPoll);
+  if(st.running || d.fit.running) S.qPoll = setTimeout(()=>{ if(S.view==='search') renderSearch(true); }, 5000);
+}
+function findResult(r){
+  const steps = `<details class="howto"><summary>What it checked</summary><ol>${r.log.map(x=>`<li>${esc(x)}</li>`).join('')}</ol></details>`;
+  if(!r.candidates.length) return `<div class="fbar" style="margin-top:8px">${esc(r.tip)}</div>${steps}`;
+  return `<div class="hint" style="margin:8px 0 4px">Found ${r.candidates.length===1?'this job list':'these job lists'} for <b>${esc(r.name)}</b>. Pick the main one (usually the one with the most jobs):</div>
+    ${r.candidates.map((c,i)=>`<div class="cand"><div><b>${esc(c.label)}</b> · ${c.jobs.toLocaleString()} open jobs · <span class="hint">${esc(c.how)}</span>
+      <div class="hint" style="word-break:break-all">${esc(c.url)}</div>${c.sample.length?`<div class="hint">e.g. ${c.sample.map(esc).join(' · ')}</div>`:''}</div>
+      <button class="btn primary" data-act="q_pick" data-i="${i}">Add to my list</button></div>`).join('')}
+    ${r.unsupported.length?`<div class="hint">Also saw: ${r.unsupported.map(esc).join(', ')} (can't be read).</div>`:''}${steps}`;
+}
+function boardRow(b, i){
+  return `<tr data-bi="${i}"><td><input class="inp" data-b="name" value="${esc(b.name)}"></td>
+    <td><input class="inp wide" data-b="url" value="${esc(b.url)}">${b.note?`<div class="hint">${esc(b.note)}</div>`:''}</td>
+    <td><select class="inp" data-b="type">${QTYPES.map(([k,l])=>`<option value="${k}" ${(b.type||'auto')===k?'selected':''}>${k==='auto'&&b.detected&&b.detected!=='auto'?`Auto (${esc(S.search.readers[b.detected]||b.detected)})`:l}</option>`).join('')}</select></td>
+    <td class="nowrap"><button class="linkbtn" data-act="q_one" data-i="${i}">Run</button> · <button class="linkbtn" data-act="q_delb" data-i="${i}">Remove</button></td></tr>`;
+}
+function readBoards(){
+  document.querySelectorAll('#qboards tr').forEach(tr => { const b = S.qBoards[+tr.dataset.bi]; tr.querySelectorAll('[data-b]').forEach(el => b[el.dataset.b] = el.value.trim()); });
+  return S.qBoards.filter(b => b.name && b.url).map(({name,url,type,note}) => ({name,url,type,note}));
+}
+function collectSearch(){
+  const days = [...document.querySelectorAll('[data-qday]')].filter(x=>x.checked).map(x=>x.dataset.qday).join(',');
+  return {enabled:$('#q_enabled').checked, run_time:$('#q_time').value, days, timezone:$('#q_tz').value, max_age_days:$('#q_age').value,
+    usajobs_min_grade:$('#q_ugrade').value, title_include:$('#q_inc').value, title_exclude:$('#q_exc').value,
+    local_places:$('#q_places').value, boards: readBoards(), jsearch_queries:$('#q_jq').value, jsearch_pages:$('#q_jpages').value};
+}
+async function onSearchAct(a, t){
+  if(a==='q_save'){ await api('/search/save', collectSearch()); toast('Search settings saved'); S.qBoards=null; renderSearch(); }
+  if(a==='q_run'){ await api('/search/save', collectSearch()); await api('/search/run', {}); toast('Search started'); S.qBoards=null; renderSearch(true); }
+  if(a==='q_one'){ await api('/search/save', collectSearch()); const b = S.qBoards[+t.dataset.i]; await api('/search/run', {only:[b.name]}); toast('Checking '+b.name); S.qBoards=null; renderSearch(true); }
+  if(a==='q_rate'){ await api('/jobs/rate', {}); toast('Rating started'); renderSearch(true); }
+  if(a==='q_find'){
+    const name = $('#f_name').value.trim(), site = $('#f_site').value.trim();
+    if(!name){ toast('Type the company name'); return; }
+    readBoards(); t.disabled = true;
+    S.findHTML = `<div class="hint"><span class="spin"></span> Looking for ${esc(name)}'s job list… this takes up to a minute.</div>`; $('#f_out').innerHTML = S.findHTML;
+    try{
+      const r = await api('/search/discover', {name, website:site}); S.find = r;
+      S.findHTML = findResult(r); $('#f_out').innerHTML = S.findHTML;
+    }finally{ t.disabled = false; }
+  }
+  if(a==='q_pick'){
+    const c = S.find.candidates[+t.dataset.i]; readBoards();
+    if(S.qBoards.some(b => b.url===c.url)){ toast('Already in your list'); return; }
+    S.qBoards.push({name:S.find.name, url:c.url, type:'auto', note:`Found automatically (${c.label}, ${c.jobs.toLocaleString()} open jobs)`});
+    await api('/search/save', collectSearch()); S.findHTML=''; S.qBoards=null; toast(S.find.name+' added'); renderSearch();
+  }
+  if(a==='q_addb'){ readBoards(); S.qBoards.push({name:'',url:'',type:'auto'}); $('#qboards').innerHTML = S.qBoards.map(boardRow).join(''); }
+  if(a==='q_delb'){ readBoards(); S.qBoards.splice(+t.dataset.i,1); $('#qboards').innerHTML = S.qBoards.map(boardRow).join(''); }
+  if(a==='q_preset'){ const v = $('#q_preset').value; if(!v) return; const pr = S.search.title_presets[v];
+    if($('#q_inc').value.trim() && !confirm('Replace the title list with "'+pr.label+'"?')) { $('#q_preset').value=''; return; }
+    $('#q_inc').value = pr.include; toast('Title list filled in — click Save search settings'); }
+  if(a==='q_suggest'){
+    const what = t.dataset.what, box = what==='towns' ? $('#q_places') : $('#q_jq'), out = $('#sg_'+what);
+    if(box.value.trim() && !confirm('Replace what is in this box with AI suggestions?')) return;
+    t.disabled = true; out.className='hint'; out.innerHTML = '<span class="spin"></span> Asking the AI model…';
+    try{ const r = await api('/search/suggest', {what}); box.value = r.text; out.textContent = '✓ '+r.detail; }
+    catch(e){ out.className='hint err'; out.textContent = '✗ '+(e.message||e); }
+    finally{ t.disabled = false; }
+  }
+}
+
+/* ============================== start ============================== */
+load();
+loadSettings();
+</script>
+</body>
+</html>
