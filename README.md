@@ -2,6 +2,10 @@
 
 **A job search portal for transitioning military and veterans.**
 
+<p align="center">
+  <img src="docs/screenshots/tour.gif" alt="Noble Search tour: rated jobs, search sources, employer finder, settings, draft library, phone view, getting started" width="900">
+</p>
+
 Noble Search runs on your own computer. Every weekday morning it:
 
 1. **Searches** for senior jobs that match you. It looks at the hiring websites of employers you pick, at USAJOBS, and at the big job boards (LinkedIn, Indeed, Glassdoor, ZipRecruiter and others).
@@ -18,6 +22,7 @@ Everything is kept on your computer. You bring your own AI key, which costs a fe
 
 ## Contents
 
+- [Screenshots](#screenshots)
 - [What it does](#what-it-does)
 - [What it costs](#what-it-costs)
 - [What you need](#what-you-need)
@@ -37,6 +42,29 @@ Everything is kept on your computer. You bring your own AI key, which costs a fe
 - [Advanced](#advanced)
 - [Disclaimer](#disclaimer)
 - [License](#license)
+
+## Screenshots
+
+Click any picture to see it full size. The jobs shown come from a real daily run.
+
+<table>
+  <tr>
+    <td align="center" width="50%"><a href="docs/screenshots/01-jobs.png"><img src="docs/screenshots/01-jobs.png" alt="Jobs, rated High / Med / Low with the reason and the gap"></a><br><sub>Jobs, rated High / Med / Low with the reason and the gap</sub></td>
+    <td align="center" width="50%"><a href="docs/screenshots/02-high-fit.png"><img src="docs/screenshots/02-high-fit.png" alt="Filtered to High fit"></a><br><sub>Filtered to High fit</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><a href="docs/screenshots/03-search.png"><img src="docs/screenshots/03-search.png" alt="Daily search — every source in one run"></a><br><sub>Daily search — every source in one run</sub></td>
+    <td align="center" width="50%"><a href="docs/screenshots/04-employers.png"><img src="docs/screenshots/04-employers.png" alt="Add an employer by name"></a><br><sub>Add an employer by name</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><a href="docs/screenshots/05-settings.png"><img src="docs/screenshots/05-settings.png" alt="Settings — bring your own keys"></a><br><sub>Settings — bring your own keys</sub></td>
+    <td align="center" width="50%"><a href="docs/screenshots/06-library.png"><img src="docs/screenshots/06-library.png" alt="Draft Library"></a><br><sub>Draft Library</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><a href="docs/screenshots/07-mobile-dark.png"><img src="docs/screenshots/07-mobile-dark.png" alt="Phone, dark mode"></a><br><sub>Phone, dark mode</sub></td>
+    <td align="center" width="50%"><a href="docs/screenshots/08-getting-started.png"><img src="docs/screenshots/08-getting-started.png" alt="Getting-started checklist"></a><br><sub>Getting-started checklist</sub></td>
+  </tr>
+</table>
 
 ---
 
