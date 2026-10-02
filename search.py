@@ -41,6 +41,7 @@ DEFAULTS = {
     "jsearch_provider": "rapidapi",
     "jsearch_queries": sources.DEFAULT_JSEARCH_QUERIES,
     "jsearch_pages": 1,
+    "jsearch_skip_sites": sources.DEFAULT_JSEARCH_SKIP,
     "fit_provider": "anthropic",
     "email_enabled": False,
     "email_to": "",

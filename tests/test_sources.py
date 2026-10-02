@@ -266,6 +266,14 @@ class JSearch(unittest.TestCase):
         rows, st = sources.read_jsearch({}, ctx())
         self.assertIn("JSearch API key", st["skipped"])
 
+    def test_skip_reposting_sites(self):
+        x = {"apply_options": [{"apply_link": "https://jobs.mysmartpros.com/1"}, {"apply_link": "https://www.linkedin.com/jobs/view/2"}],
+             "job_apply_link": "https://us.remotejobs.dedyn.io/9"}
+        skip = sources._skip_list({})
+        self.assertEqual(sources.jsearch_link(x, skip), "https://www.linkedin.com/jobs/view/2")
+        self.assertEqual(sources.jsearch_link({"job_apply_link": "https://a.liveblog365.com/x"}, skip), "")
+        self.assertEqual(sources._skip_list({"jsearch_skip_sites": ""}), [])
+
     def test_limit_stops(self):
         def boom(url, data=None, headers=None, timeout=30, as_json=True):
             raise sources.ReaderError("HTTP 429 from jsearch.p.rapidapi.com")

@@ -25,12 +25,12 @@ Rate how well THIS candidate fits the job below. Use only facts in the candidate
 Rating scale:
 - High: meets the posted basic qualifications, and the core of the role maps directly to work the candidate has done at comparable or larger scope. Worth applying now.
 - Med: strong leadership/scope match, but one notable gap (a domain, a hands-on technical requirement, a certification, or the level is a step down/up).
-- Low: a key requirement is missing (e.g. years of hands-on software development, a specific engineering discipline, a license or cert he lacks, a domain he has never worked), or the level/pay is clearly wrong.
+- Low: the posting is open only to internal candidates or current employees; or a key requirement is missing (e.g. years of hands-on software development, a specific engineering discipline, a license or cert he lacks, a domain he has never worked), or the level/pay is clearly wrong.
 
 Return ONLY a JSON object:
 {"fit": "High" | "Med" | "Low",
  "lane": one of LANES,
- "reason": "Max 45 words, plain language. First: the strongest match, citing a specific role/scope/number from the candidate material in civilian terms. Then: the main gap or risk (write 'gap:' before it). Mention the clearance only if the posting requires one.",
+ "reason": "Max 45 words, plain language, three parts in this order. (1) What the job actually is, in a few words (e.g. 'Runs program-health reviews for an aircraft sector'). (2) Why THIS candidate fits THIS job: name the one or two parts of their background that match this posting's main duties, in civilian terms. Do not open with years of experience or repeat the same headline numbers for every job; use a number only when it matches the scale this posting asks for. (3) 'Gap:' and the main gap or risk. Refer to the candidate as 'you'. A higher clearance than required is not a gap; mention clearance only if the posting requires one.",
  "meets_basic_quals": "yes" | "no" | "unclear"}
 """
 

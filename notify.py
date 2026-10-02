@@ -9,12 +9,15 @@ import smtplib
 import ssl
 import threading
 import time
+import re
+import urllib.parse
 import urllib.request
-from datetime import datetime
+from datetime import date, datetime
 from email.message import EmailMessage
 from email.utils import formataddr, make_msgid
 
 import fit
+import sources
 
 _db = None
 _state = {"last_sent": None, "last_error": None}
@@ -64,14 +67,70 @@ def _jobs(keys):
     return rows
 
 
+TOP_PICKS = 5
+MORE_MAX = 15
+_LEADS = re.compile(r"^\s*(strongest match|strong match|good match|match|fit)\s*[:\-—]\s*", re.I)
+_GAP = re.compile(r"\s*\b(gaps?|risk)\s*:\s*", re.I)
+
+
+def split_reason(reason):
+    """('why it fits', 'gap') from a stored fit reason, tidied for reading."""
+    r = _LEADS.sub("", (reason or "").strip())
+    r = re.sub(r"\s*\(?Meets basic quals\.?\)?\s*$", "", r, flags=re.I).strip()
+    parts = _GAP.split(r, maxsplit=1)
+    why = parts[0].strip().rstrip(";,. ") if parts else ""
+    gap = parts[-1].strip() if len(parts) == 3 else ""
+    cap = lambda s: s[:1].upper() + s[1:] if s else s  # noqa: E731
+    return (cap(why) + "." if why and why[-1] not in ".!?" else cap(why)), cap(gap)
+
+
+def site(url):
+    host = urllib.parse.urlparse(url or "").netloc.lower().split(":")[0]
+    return host[4:] if host.startswith("www.") else host
+
+
+def _closing(j, today=None):
+    """Days until the closing date (0 = today), or None if unknown / past / far off."""
+    today = today or date.today()
+    m = re.match(r"(\d{4}-\d{2}-\d{2})", str(j.get("closing_date") or ""))
+    if not m:
+        return None
+    try:
+        d = (date.fromisoformat(m.group(1)) - today).days
+    except ValueError:
+        return None
+    return d if 0 <= d <= 7 else None
+
+
+def _closes_text(d, j):
+    if d is None:
+        return ""
+    when = "today" if d == 0 else "tomorrow" if d == 1 else datetime.fromisoformat(j["closing_date"][:10]).strftime("%a %b %-d")
+    return f"closes {when}"
+
+
+def _closing_soon(exclude=()):
+    db_fn, lock = _db
+    with lock, db_fn() as conn:
+        rows = [dict(x) for x in conn.execute(
+            "SELECT * FROM jobs WHERE closing_date != '' AND closing_date IS NOT NULL AND COALESCE(status,'') != 'dismissed' "
+            "AND (fit IN ('High','Med') OR status IN ('interested','applied','interviewing','offer'))")]
+    out = [(d, j) for j in rows for d in [_closing(j)] if d is not None and j["job_key"] not in exclude]
+    out.sort(key=lambda x: x[0])
+    return out[:8]
+
+
 def build(run, cfg):
-    """Return (subject, text, html) for a run."""
+    """Return (subject, text, html, counts) for a run."""
     jobs = _jobs(run.get("added_keys") or [])
     high = [j for j in jobs if j.get("fit") == "High"]
     med = [j for j in jobs if j.get("fit") == "Med"]
     low = [j for j in jobs if j.get("fit") == "Low"]
     unrated = [j for j in jobs if not j.get("fit")]
-    bad = [d for d in run.get("detail") or [] if d.get("ok") is False]
+    detail = run.get("detail") or []
+    bad = [d for d in detail if d.get("ok") is False]
+    scanned = sum(int(d.get("scanned") or 0) for d in detail)
+    nsrc = len([d for d in detail if not d.get("skipped")])
     day = datetime.now().strftime("%a %b %-d")
     if jobs:
         parts = [f"{len(x)} {n}" for x, n in ((high, "High"), (med, "Med"), (low, "Low"), (unrated, "unrated")) if x]
@@ -79,65 +138,149 @@ def build(run, cfg):
     else:
         subject = f"Noble Search {day}: no new matches"
     url = (cfg.get("dashboard_url") or "").rstrip("/")
+    skip = sources._skip_list(cfg)
 
-    # ---- plain text
-    t = [subject, ""]
-    for label, group in (("HIGH FIT", high), ("MED FIT", med), ("NOT RATED YET", unrated)):
-        if group:
-            t.append(f"== {label} ==")
-            for j in group:
-                t += [f"- {j['title']} — {j['company']}", f"  {j.get('location') or ''} · {j.get('work_mode') or ''}"
-                      + (f" · {j['salary']}" if j.get("salary") else "") + (f" · posted {j['posted_date']}" if j.get("posted_date") else ""),
-                      *( [f"  {j['fit_reason']}"] if j.get("fit_reason") else [] ), f"  {j.get('link') or ''}", ""]
+    def rank(j):  # within a fit level: real employer/board link first, then ones with a reason, then has pay
+        return (sources._skipped_site(j.get("link"), skip), not j.get("fit_reason"), not j.get("salary"))
+    ranked = sorted(high, key=rank) + sorted(med, key=rank)
+    picks = ranked[:TOP_PICKS]
+    more_all = ranked[TOP_PICKS:] + unrated
+    more, extra = more_all[:MORE_MAX], len(more_all) - MORE_MAX
+    soon = _closing_soon()
+    by_source = [f"{d.get('name')} {d.get('added')}" for d in detail if int(d.get("added") or 0) > 0]
+    s1 = f"{len(jobs)} new today ({', '.join(parts)})." if jobs else "No new matching jobs today."
+    s2 = [f"{scanned:,} listings checked across {nsrc} sources"] if scanned else []
+    if run.get("updated"):
+        s2.append(f"{run['updated']} existing jobs updated")
+    summary = s1 + (" " + "; ".join(s2)[:1].upper() + "; ".join(s2)[1:] + "." if s2 else "")
+
+    def meta(j):
+        return " · ".join(x for x in [j.get("location"), j.get("work_mode"), j.get("salary")] if x)
+
+    # ---- plain text (reads like a short briefing)
+    t = [summary, ""]
+    if by_source:
+        t += ["New jobs by source: " + ", ".join(by_source) + ".", ""]
+    if picks:
+        t.append("Top picks")
+        for i, j in enumerate(picks, 1):
+            why, gap = split_reason(j.get("fit_reason"))
+            closes = _closes_text(_closing(j), j)
+            t.append(f"{i}. {j['title']} — {j['company']} — {meta(j)} — {j['fit']}."
+                     + (f" {why}" if why else "") + (f" Gap: {gap}" if gap else "") + (f" ({closes})" if closes else ""))
+            t.append(f"   {j.get('link') or url}")
+        t.append("")
+    if more:
+        t.append("Also new")
+        t += [f"- {j.get('fit') or 'Not rated'}: {j['title']} — {j['company']} — {meta(j)}" for j in more]
+        if extra > 0:
+            t.append(f"…and {extra} more in your dashboard.")
+        t.append("")
     if low:
-        t += [f"== LOW FIT ({len(low)}) ==", *[f"- {j['title']} — {j['company']}" for j in low], ""]
+        t += [f"{len(low)} Low-fit job{'s' if len(low) > 1 else ''} added to your dashboard.", ""]
+    if soon:
+        t.append("Closing within 7 days: " + "; ".join(f"{j['title']} — {j['company']} ({_closes_text(d, j)})" for d, j in soon) + ".")
+        t.append("")
     if bad:
-        t += ["Sources with problems:", *[f"- {d.get('name')}: {'; '.join(d.get('errors') or [])[:200]}" for d in bad], ""]
-    t.append(f"{run.get('found', 0)} matching jobs checked, {run.get('added', 0)} new, {run.get('updated', 0)} updated.")
+        t.append("Couldn't read: " + "; ".join(f"{d.get('name')} ({'; '.join(d.get('errors') or [])[:120]})" for d in bad) + ".")
+        t.append("")
     if url:
-        t.append(f"Dashboard: {url}")
+        t.append(f"Open your dashboard: {url}")
     text = "\n".join(t)
 
-    # ---- html
+    # ---- html (table layout and inline styles, so Gmail/Outlook/phones all render it)
     e = html.escape
-    color = {"High": ("#0f7b4a", "#e3f5ec"), "Med": ("#8a5a00", "#fbf0d9"), "Low": ("#6b7280", "#eef0f3"), "": ("#6b7280", "#ffffff")}
+    F = "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
+    NAVY, GOLD, INK, MUTED, LINE = "#14213d", "#c99a2e", "#1d2433", "#5b6475", "#e6e8ee"
+    pill = {"High": ("#0f7b4a", "#e3f5ec"), "Med": ("#8a5a00", "#fbf0d9"), "Low": ("#5b6475", "#eef0f3"), "": ("#5b6475", "#eef0f3")}
 
-    def card(j):
-        fg, bg = color.get(j.get("fit") or "", color[""])
-        pill = (f'<span style="font:600 12px Arial;color:{fg};background:{bg};border-radius:10px;padding:2px 8px">'
-                f'{e(j["fit"] + " fit" if j.get("fit") else "Not rated")}</span>')
-        meta = " · ".join(e(x) for x in [j.get("location"), j.get("work_mode"), j.get("salary"),
-                                          f"posted {j['posted_date']}" if j.get("posted_date") else "",
-                                          f"clearance: {j['clearance']}" if j.get("clearance") else ""] if x)
-        return (f'<div style="border:1px solid #e3e6ea;border-radius:10px;padding:12px 14px;margin:0 0 10px">'
-                f'<div>{pill} <a href="{e(j.get("link") or url)}" style="font:600 15px Arial;color:#1E3764;text-decoration:none">{e(j["title"])}</a></div>'
-                f'<div style="font:600 13px Arial;color:#222;margin-top:4px">{e(j["company"])}</div>'
-                f'<div style="font:12px Arial;color:#555;margin-top:2px">{meta}</div>'
-                + (f'<div style="font:13px/1.45 Arial;color:#222;margin-top:6px">{e(j["fit_reason"])}</div>' if j.get("fit_reason") else "")
-                + "</div>")
+    def chip(txt, fg, bg):
+        return (f'<span style="display:inline-block;{F};font-size:12px;font-weight:700;color:{fg};background:{bg};'
+                f'border-radius:999px;padding:2px 9px;margin:0 6px 4px 0;white-space:nowrap">{e(txt)}</span>')
 
-    h = [f'<div style="max-width:680px;margin:0 auto;font:14px Arial;color:#222">',
-         f'<h2 style="font:700 18px Arial;color:#1E3764;margin:0 0 4px">{e(subject)}</h2>',
-         f'<div style="font:12px Arial;color:#666;margin-bottom:14px">{run.get("found", 0)} matching jobs checked · '
-         f'{run.get("added", 0)} new · {run.get("updated", 0)} updated'
-         + (f' · <a href="{e(url)}" style="color:#1E3764">Open dashboard</a>' if url else "") + "</div>"]
-    for label, group in (("High fit", high), ("Med fit", med), ("Not rated yet", unrated)):
-        if group:
-            h.append(f'<h3 style="font:700 14px Arial;margin:16px 0 8px">{label} ({len(group)})</h3>')
-            h += [card(j) for j in group]
+    def pick(i, j):
+        why, gap = split_reason(j.get("fit_reason"))
+        fg, bg = pill.get(j.get("fit") or "", pill[""])
+        chips = chip(f'{j["fit"]} fit', fg, bg)
+        if j.get("salary"):
+            chips += chip(j["salary"], INK, "#f1f3f7")
+        d = _closing(j)
+        if d is not None:
+            chips += chip(_closes_text(d, j), "#b42318", "#fde8e7")
+        link = j.get("link") or url
+        loc = " · ".join(e(x) for x in [j.get("location"), j.get("work_mode")] if x)
+        return f"""<tr><td style="padding:16px 0;border-top:1px solid {LINE}">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+<td width="34" valign="top"><div style="{F};width:26px;height:26px;line-height:26px;border-radius:50%;background:{NAVY};color:#fff;font-size:13px;font-weight:700;text-align:center">{i}</div></td>
+<td valign="top">
+<a href="{e(link)}" style="{F};font-size:16px;font-weight:700;color:{NAVY};text-decoration:none;line-height:1.3">{e(j["title"])}</a>
+<div style="{F};font-size:14px;color:{INK};margin:3px 0 8px"><b>{e(j["company"])}</b>{' · ' + loc if loc else ''}</div>
+<div>{chips}</div>
+{f'<div style="{F};font-size:14px;line-height:1.5;color:{INK};margin-top:6px">{e(why)}</div>' if why else ''}
+{f'<div style="{F};font-size:14px;line-height:1.5;color:#8a3b12;margin-top:4px"><b>Gap:</b> {e(gap)}</div>' if gap else ''}
+<div style="{F};font-size:13px;margin-top:8px"><a href="{e(link)}" style="color:#1f5eff;text-decoration:none">View posting on {e(site(link) or "the site")} &rarr;</a></div>
+</td></tr></table></td></tr>"""
+
+    def section(title, inner, color=INK):
+        return (f'<tr><td style="padding:22px 0 6px"><div style="{F};font-size:12px;font-weight:800;letter-spacing:.08em;'
+                f'text-transform:uppercase;color:{color}">{title}</div></td></tr>{inner}')
+
+    rows = []
+    if picks:
+        rows.append(section("Today's top picks", "".join(pick(i, j) for i, j in enumerate(picks, 1))))
+    if more:
+        li = "".join(
+            f'<tr><td style="padding:9px 0;border-top:1px solid {LINE};{F};font-size:14px;line-height:1.4;color:{INK}">'
+            f'{chip((j.get("fit") or "Not rated") + (" fit" if j.get("fit") else ""), *pill.get(j.get("fit") or "", pill[""]))}'
+            f'<a href="{e(j.get("link") or url)}" style="color:{NAVY};font-weight:600;text-decoration:none">{e(j["title"])}</a>'
+            f' <span style="color:{MUTED}">— {e(j["company"])}{" · " + e(meta(j)) if meta(j) else ""}</span></td></tr>' for j in more)
+        if extra > 0:
+            li += (f'<tr><td style="padding:9px 0;border-top:1px solid {LINE};{F};font-size:14px;color:{MUTED}">'
+                   f'…and {extra} more High/Med job{"s" if extra > 1 else ""} in your dashboard.</td></tr>')
+        rows.append(section("Also new", li))
     if low:
-        h.append(f'<h3 style="font:700 14px Arial;margin:16px 0 6px">Low fit ({len(low)})</h3><ul style="margin:0;padding-left:18px;font:13px Arial;color:#555">'
-                 + "".join(f'<li><a href="{e(j.get("link") or url)}" style="color:#555">{e(j["title"])}</a> — {e(j["company"])}</li>' for j in low)
-                 + "</ul>")
+        rows.append(f'<tr><td style="padding:12px 0 0;{F};font-size:14px;color:{MUTED}">{len(low)} Low-fit job{"s" if len(low) > 1 else ""} '
+                    f'added to your dashboard{" (" + ", ".join(e(c) for c in list(dict.fromkeys(j["company"] for j in low))[:4]) + ("…" if len(set(j["company"] for j in low)) > 4 else "") + ")" if low else ""}.</td></tr>')
     if not jobs:
-        h.append('<p style="font:14px Arial">No new matching jobs today. Your watchlist is unchanged.</p>')
+        rows.append(f'<tr><td style="padding:18px 0;{F};font-size:15px;color:{INK}">No new matching jobs today. Your watchlist is unchanged.</td></tr>')
+    if soon:
+        li = "".join(f'<div style="margin:4px 0"><b>{e(_closes_text(d, j)[:1].upper() + _closes_text(d, j)[1:])}:</b> '
+                     f'<a href="{e(j.get("link") or url)}" style="color:{NAVY};text-decoration:none">{e(j["title"])}</a> — {e(j["company"])}</div>' for d, j in soon)
+        rows.append(f'<tr><td style="padding:20px 0 0"><div style="background:#fff7e6;border:1px solid #f3dca6;border-radius:10px;padding:12px 14px;{F};font-size:14px;line-height:1.45;color:{INK}">'
+                    f'<div style="font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#8a5a00;margin-bottom:4px">Closing within 7 days</div>{li}</div></td></tr>')
+    foot = []
+    if by_source:
+        foot.append("New jobs by source: " + e(", ".join(by_source)) + ".")
     if bad:
-        h.append('<h3 style="font:700 14px Arial;margin:16px 0 6px;color:#b42318">Sources with problems</h3><ul style="margin:0;padding-left:18px;font:12px Arial;color:#555">'
-                 + "".join(f'<li>{e(d.get("name") or "")}: {e("; ".join(d.get("errors") or [])[:200])}</li>' for d in bad) + "</ul>")
-    h.append('<p style="font:11px Arial;color:#888;margin-top:18px">Noble Search &copy; 2026 Kenneth Haynes and CyberCloudAI.tech. '
-             'Licensed under the PolyForm Noncommercial License 1.0.0. Commercial use or reuse is prohibited without written permission.</p>')
-    h.append("</div>")
-    return subject, text, "".join(h), {"new": len(jobs), "high": len(high), "med": len(med)}
+        foot.append("Couldn't read: " + e("; ".join(f"{d.get('name')} ({'; '.join(d.get('errors') or [])[:100]})" for d in bad)) + ".")
+    if foot:
+        rows.append(f'<tr><td style="padding:20px 0 0;{F};font-size:13px;line-height:1.5;color:{MUTED}">{"<br>".join(foot)}</td></tr>')
+    if url:
+        rows.append(f'<tr><td align="center" style="padding:24px 0 6px"><a href="{e(url)}" style="{F};display:inline-block;background:{NAVY};color:#fff;'
+                    f'font-size:15px;font-weight:700;text-decoration:none;border-radius:8px;padding:12px 22px">Open your dashboard</a></td></tr>')
+
+    stats = "".join(
+        f'<td align="center" style="padding:0 12px 0 0"><div style="{F};font-size:24px;font-weight:800;color:{c}">{n}</div>'
+        f'<div style="{F};font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#aeb8d0;white-space:nowrap">{lbl}</div></td>'
+        for n, lbl, c in ((len(jobs), "New", "#fff"), (len(high), "High fit", "#7ee2b0"), (len(med), "Med fit", "#f6d58b"),
+                          (f"{scanned:,}" if scanned else run.get("found", 0), "Checked", "#fff")))
+    preheader = e(summary)
+    h = f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light only"></head>
+<body style="margin:0;padding:0;background:#f2f4f8">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0">{preheader}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f8"><tr><td align="center" style="padding:16px 6px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#ffffff;border-radius:14px;overflow:hidden">
+<tr><td style="background:{NAVY};padding:20px 18px 18px">
+<div style="{F};font-size:12px;font-weight:800;letter-spacing:.18em;color:{GOLD}">&#9733; NOBLE SEARCH</div>
+<div style="{F};font-size:22px;font-weight:800;color:#fff;margin:6px 0 2px">{e(datetime.now().strftime("%A, %B %-d"))}</div>
+<div style="{F};font-size:14px;color:#c9d2e8;line-height:1.45">{e(summary)}</div>
+<table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:14px"><tr>{stats}</tr></table>
+</td></tr>
+<tr><td style="padding:4px 18px 22px;word-break:break-word"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">{"".join(rows)}</table></td></tr>
+</table>
+<div style="{F};font-size:11px;line-height:1.5;color:#8a93a6;max-width:560px;margin:14px auto 0">Noble Search &copy; 2026 Kenneth Haynes and CyberCloudAI.tech. Licensed under the PolyForm Noncommercial License 1.0.0. Commercial use or reuse is prohibited without written permission.</div>
+</td></tr></table></body></html>"""
+    return subject, text, h, {"new": len(jobs), "high": len(high), "med": len(med)}
 
 
 # --------------------------------------------------------------------------- sending

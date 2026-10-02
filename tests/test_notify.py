@@ -72,12 +72,18 @@ class Notify(unittest.TestCase):
         msg = SENT[0]
         body = msg.get_body(("plain",)).get_content()
         self.assertLess(body.index("Director IT"), body.index("VP Ops"))
-        self.assertIn("gap: commercial P&L", body)
-        self.assertIn("Jacobs: bot check", body)
+        self.assertIn("Gap: Commercial P&L", body)
+        self.assertIn("Jacobs (bot check)", body)
         self.assertNotIn("Old", body)
         html_part = msg.get_body(("html",)).get_content()
         self.assertIn("https://x/A", html_part)
-        self.assertIn("Open dashboard", html_part)
+        self.assertIn("Open your dashboard", html_part)
+        self.assertIn("Today's top picks", html_part)
+
+    def test_split_reason(self):
+        self.assertEqual(notify.split_reason("Strong match: led IT for 5,000. gap: no EVM. Meets basic quals."),
+                         ("Led IT for 5,000.", "No EVM."))
+        self.assertEqual(notify.split_reason("Runs ops reviews; fits you."), ("Runs ops reviews; fits you.", ""))
 
     def test_fallback_465(self):
         global FAIL_587

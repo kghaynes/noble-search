@@ -52,7 +52,8 @@ program manager|project manager"""),
     "all": ("Any title (use with care — many results)", "*"),
 }
 
-DEFAULT_TITLE_EXCLUDE = """assistant
+DEFAULT_TITLE_EXCLUDE = """internal (candidates|applicants|to department) only|internal only
+assistant
 \\bintern\\b|internship
 coordinator
 technician
@@ -955,12 +956,40 @@ def jsearch_posted(x):
     return ""
 
 
-def jsearch_row(ctx, x, w):
+# Re-posting sites that copy jobs from elsewhere (often stale, sometimes scams). Links to these are
+# skipped; the job is kept only if another link (employer or a known board) is available.
+DEFAULT_JSEARCH_SKIP = """mysmartpros.com
+dedyn.io
+liveblog365.com
+trabajo.org
+hijobs.co.com
+workopia.io
+jobilize.com
+jooble.org
+bebee.com"""
+
+
+def _skip_list(cfg):
+    return [s.strip().lower().lstrip("*.").lstrip(".") for s in str(cfg.get("jsearch_skip_sites", DEFAULT_JSEARCH_SKIP) or "").replace(",", "\n").splitlines() if s.strip()]
+
+
+def _skipped_site(url, skip):
+    host = urllib.parse.urlparse(url or "").netloc.lower().split(":")[0]
+    return bool(host) and any(host == s or host.endswith("." + s) for s in skip)
+
+
+def jsearch_link(x, skip=()):
+    """Best apply link: the employer's own, then any allowed board, never a skipped site. '' if none."""
+    opts = [o for o in (x.get("apply_options") or []) if o.get("apply_link") and not _skipped_site(o["apply_link"], skip)]
+    direct = next((o["apply_link"] for o in opts if o.get("is_direct")), None)
+    main = x.get("job_apply_link") if not _skipped_site(x.get("job_apply_link"), skip) else ""
+    return direct or main or (opts[0]["apply_link"] if opts else "")
+
+
+def jsearch_row(ctx, x, w, skip=()):
     city = ", ".join(filter(None, [x.get("job_city"), x.get("job_state")]))
     loc = city or x.get("job_location") or ""
-    opts = x.get("apply_options") or []
-    direct = next((o.get("apply_link") for o in opts if o.get("is_direct") and o.get("apply_link")), None)
-    link = direct or x.get("job_apply_link") or (opts[0].get("apply_link") if opts else "") or x.get("job_google_link") or ""
+    link = jsearch_link(x, skip)
     sal = x.get("job_salary_string") or ""
     if not sal and x.get("job_min_salary") and x.get("job_max_salary"):
         per = (x.get("job_salary_period") or "").lower()
@@ -989,6 +1018,8 @@ def read_jsearch(cfg, ctx):
     pages = max(1, min(5, int(cfg.get("jsearch_pages") or 1)))
     date_posted = "week" if ctx.max_age <= 7 else "month"
     seen, rows = set(), []
+    skip = _skip_list(cfg)
+    st["skipped_sites"] = 0
     for q in jsearch_queries(cfg, ctx):
         remote = bool(re.search(r"\bremote\b", q, re.I))
         try:
@@ -1016,10 +1047,15 @@ def read_jsearch(cfg, ctx):
             loc = ", ".join(filter(None, [x.get("job_city"), x.get("job_state"), x.get("job_country")])) or x.get("job_location") or ""
             w = ctx.where(loc, remote_flag=is_remote, loose_remote=False)
             if w:
-                rows.append(jsearch_row(ctx, x, w))
+                if not jsearch_link(x, skip):
+                    st["skipped_sites"] += 1   # only re-posting sites had it
+                    continue
+                rows.append(jsearch_row(ctx, x, w, skip))
     if st["errors"] and not rows and st["requests"] == 0:
         st["ok"] = False
     st["kept"] = len(rows)
+    if st["skipped_sites"]:
+        st["note"] = f"{st['skipped_sites']} skipped: only listed on re-posting sites you chose to skip."
     st["seconds"] = round(time.time() - t0, 1)
     return rows, st
 

@@ -781,7 +781,7 @@ async function renderSearch(keep){
         <b>${checked.toLocaleString()}</b> jobs checked · <b>${run.found}</b> matching · <b>${run.added}</b> new · ${run.updated} updated · ${esc(run.status)}${bad?` · <span class="err">${bad} source${bad>1?'s':''} failed</span>`:''}${run.emailed?' · email: '+esc(run.emailed):''}</span></summary>
       <div style="overflow-x:auto"><table class="qt"><thead><tr><th>Source</th><th>Read as</th><th class="num">Checked</th><th class="num">Title match</th><th class="num">Kept</th><th class="num">New</th><th class="num">Secs</th><th>Notes</th></tr></thead><tbody>
       ${run.detail.map(x=>`<tr class="${x.ok===false?'bad':''}"><td>${esc(x.name)}</td><td>${esc(d.readers[x.type]||x.type)}</td><td class="num">${x.scanned??''}</td><td class="num">${x.title_matches??''}</td><td class="num">${x.kept??''}</td><td class="num">${x.added??''}</td><td class="num">${x.seconds??''}</td>
-        <td>${x.skipped?`<span class="hint">${esc(x.skipped)}</span>`:''}${(x.errors||[]).length?`<span class="err">${esc(x.errors.join(' · '))}</span>`:''}</td></tr>`).join('')}
+        <td>${x.skipped?`<span class="hint">${esc(x.skipped)}</span>`:''}${x.note?`<span class="hint">${esc(x.note)}</span>`:''}${(x.errors||[]).length?`<span class="err">${esc(x.errors.join(' · '))}</span>`:''}</td></tr>`).join('')}
       </tbody></table></div></details>` : '<div class="hint">No searches yet. Click Run now to try it.</div>';
   v.innerHTML = `<div class="page">
     <section class="box"><h2>Daily search</h2>
@@ -838,6 +838,8 @@ async function renderSearch(keep){
 chief information security officer remote">${esc(c.jsearch_queries)}</textarea></label>
         <div class="row full"><button class="btn" data-act="q_suggest" data-what="searches">✨ Suggest searches from my Profile</button><span class="hint" id="sg_searches"></span></div>
         <label class="fld">Result pages per search (10 jobs each)<input id="q_jpages" type="number" min="1" max="5" value="${esc(c.jsearch_pages)}"></label>
+        <label class="fld full">Skip these re-posting sites (one per line)<textarea id="q_jskip" rows="4">${esc(c.jsearch_skip_sites)}</textarea>
+          <span class="hint">Some sites copy jobs from elsewhere; their copies are often out of date and sometimes fake. Links to these sites are never used — a job is kept only if the employer's own link or a known board (LinkedIn, Indeed…) is available.</span></label>
         <div class="fld"><span>Estimated use</span><b style="color:var(--ink)">about ${d.jsearch_monthly} requests a month</b><span class="hint">Free plans allow 200 a month.</span></div>
       </div></section>
     <section class="box"><h2>What counts as a match</h2>
@@ -880,7 +882,7 @@ function collectSearch(){
   const days = [...document.querySelectorAll('[data-qday]')].filter(x=>x.checked).map(x=>x.dataset.qday).join(',');
   return {enabled:$('#q_enabled').checked, run_time:$('#q_time').value, days, timezone:$('#q_tz').value, max_age_days:$('#q_age').value,
     usajobs_min_grade:$('#q_ugrade').value, title_include:$('#q_inc').value, title_exclude:$('#q_exc').value,
-    local_places:$('#q_places').value, boards: readBoards(), jsearch_queries:$('#q_jq').value, jsearch_pages:$('#q_jpages').value};
+    local_places:$('#q_places').value, boards: readBoards(), jsearch_queries:$('#q_jq').value, jsearch_pages:$('#q_jpages').value, jsearch_skip_sites:$('#q_jskip').value};
 }
 async function onSearchAct(a, t){
   if(a==='q_save'){ await api('/search/save', collectSearch()); toast('Search settings saved'); S.qBoards=null; renderSearch(); }
