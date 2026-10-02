@@ -52,6 +52,8 @@ program manager|project manager"""),
     "all": ("Any title (use with care — many results)", "*"),
 }
 
+INTERNAL_ONLY = re.compile(r"\binternal (candidates?|applicants?|employees?|to (the )?department)( only)?\b|\binternal only\b|\bcurrent employees only\b", re.I)
+
 DEFAULT_TITLE_EXCLUDE = """internal (candidates|applicants|to department) only|internal only
 assistant
 \\bintern\\b|internship
@@ -295,6 +297,8 @@ class Context:
         return ""
 
     def title_ok(self, title):
+        if INTERNAL_ONLY.search(_norm(title)):
+            return False   # open only to current employees: never useful to an outside candidate
         if self.any_title:
             return not any(r.search(_norm(title)) for r in self.exclude)
         t = _norm(title)

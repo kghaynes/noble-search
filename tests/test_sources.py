@@ -274,6 +274,12 @@ class JSearch(unittest.TestCase):
         self.assertEqual(sources.jsearch_link({"job_apply_link": "https://a.liveblog365.com/x"}, skip), "")
         self.assertEqual(sources._skip_list({"jsearch_skip_sites": ""}), [])
 
+    def test_internal_only(self):
+        c = ctx(title_exclude="")
+        self.assertFalse(c.title_ok("Deputy CISO - 991310 **Internal to Department Only**"))
+        self.assertFalse(c.title_ok("Director of IT (Internal Candidates Only)"))
+        self.assertTrue(c.title_ok("Director, Internal Audit"))
+
     def test_limit_stops(self):
         def boom(url, data=None, headers=None, timeout=30, as_json=True):
             raise sources.ReaderError("HTTP 429 from jsearch.p.rapidapi.com")

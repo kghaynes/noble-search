@@ -807,10 +807,14 @@ async function renderSearch(keep){
       <div class="hint">JSearch reads <b>Google for Jobs</b> — Google's index of public job postings — so one search covers:</div>
       <ul class="srcs">
         <li><b>LinkedIn</b></li><li><b>Indeed</b></li><li><b>Glassdoor</b></li><li><b>ZipRecruiter</b></li>
-        <li>Other public boards Google indexes, such as Monster, CareerBuilder, SimplyHired, BeBee and Jobrapido</li>
+        <li>Other public boards Google indexes, such as Monster, CareerBuilder, SimplyHired and Ladders</li>
         <li>Company career sites (Workday, Greenhouse, Lever and similar)</li></ul>
       <div class="hint">It does <b>not</b> include USAJOBS (searched separately with your USAJOBS key) or postings only visible after signing in. Each card shows the board a job came from, e.g. “JSearch (LinkedIn)”.${(d.jsearch_publishers||[]).length?` <b>Boards in your current results:</b> ${d.jsearch_publishers.slice(0,12).map(([n,k])=>`${esc(n)} (${k})`).join(', ')}.`:''}
       ${c.jsearch_key_set?'':' <b>Add a JSearch key on <button class="linkbtn" data-view="settings">Settings</button> to turn it on.</b>'}</div>
+      <div class="hint" style="margin-top:8px"><b>Skipped automatically:</b></div>
+      <ul class="srcs" style="columns:1">
+        <li><b>Copycat sites</b> that re-post jobs copied from other boards. Their copies are often out of date and sometimes fake, so their links are never used. A job is kept only when the employer's own link or a known board's link is available. You can edit the list under <i>Job-board searches</i> below.</li>
+        <li><b>Internal-only postings</b> — jobs open only to current employees (e.g. "Internal Candidates Only"). This applies to every source, not just the job boards.</li></ul>
     </section>
     <section class="box"><h2>Employers</h2>
       <div class="hint">The search reads these employers' own hiring systems directly — often days before jobs reach the job boards.</div>
