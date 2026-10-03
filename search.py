@@ -67,7 +67,7 @@ AGGREGATOR_LINK = ("indeed.com", "dice.com", "ziprecruiter.com", "linkedin.com",
 
 _cfg_lock = threading.Lock()
 _run_lock = threading.Lock()
-_state = {"running": False, "current": "", "started": None}
+_state = {"running": False, "current": "", "started": None, "step": 0, "steps": 0, "t0": None}
 _db = None  # (db_fn, db_lock) supplied by app.init
 
 
@@ -330,10 +330,11 @@ def run(trigger="manual", listing_fields=None, only=None):
         if not only or "JSearch (job boards)" in only:
             steps.append(("JSearch (job boards)", lambda: sources.read_jsearch(cfg, ctx)))
         steps += [(b.get("name"), (lambda b=b: sources.run_board(b, ctx))) for b in boards]
-        for name, step in steps:
+        _state.update(steps=len(steps), step=0, t0=time.time())
+        for i, (name, step) in enumerate(steps):
             if sources.STOP.is_set():
                 break
-            _state["current"] = name
+            _state.update(current=name, step=i)
             save(*step())
         stopped = sources.STOP.is_set()
         bad = sum(1 for d in detail if not d.get("ok"))
@@ -350,7 +351,7 @@ def run(trigger="manual", listing_fields=None, only=None):
             notify.after_search(run_id, trigger, cfg)  # rate the new jobs, then email / push the summary
         return run_id
     finally:
-        _state.update(running=False, current="", started=None)
+        _state.update(running=False, current="", started=None, step=0, steps=0, t0=None)
         sources.STOP.clear()
         _run_lock.release()
 

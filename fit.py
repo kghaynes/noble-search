@@ -134,7 +134,8 @@ def run(keys=None, provider=None, force=False):
         settings = ps.get_settings(include_secret=True)
         inv, texts = drafts._sources()
         system = system_prompt(ps.get_profile(), inv, texts)
-        _state.update(running=True, done=0, total=len(keys), current="", errors=0, last_error="", provider=provider)
+        _state.update(running=True, done=0, total=len(keys), current="", errors=0, last_error="", provider=provider,
+                      started=time.time())
         for key in keys:
             with lock, db_fn() as conn:
                 r = conn.execute("SELECT * FROM jobs WHERE job_key=?", (key,)).fetchone()

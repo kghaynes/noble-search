@@ -3,6 +3,8 @@
 All notable changes are listed here. Versions follow [semantic versioning](https://semver.org/): 0.x.y while the project is young.
 
 ## [Unreleased]
+- **Progress box** on the Jobs and Search pages while a search or rating runs: which step (search sources → rate fit & gaps → ready), which source or job it is on, a progress bar, an estimated time left, a Stop button, and a reminder that it keeps running if you close the page. First searches are flagged as the slow one (15–30+ minutes).
+- **Warnings** when fit rating is turned off while jobs are waiting (with a one-click "Turn rating on & rate them"), and when job boards have a key but no searches.
 - Getting started: the "Fill in your Profile" step now says exactly what is still missing (your name, or a home town the search can read). The home town is taken from Home location, or from City, State if that is the one filled in. The Profile page shows how the search reads your home town ("Search reads this as Melbourne, FL").
 - Fixed: if the Profile's home town couldn't be read (e.g. "Melbourne, Florida" or an address without commas), the USAJOBS "near home" search ran nationwide and kept hundreds of jobs. Home towns are now read in more formats, and the near-home search is skipped (with a note in the run summary) until a home town is set.
 - Fixed: senior federal jobs (GS-14+ or SES) skipped the "skip titles" list, so physician and similar jobs got through. The skip list now applies to them; physician, medical officer, nurse, dentist, pharmacist, veterinarian, psychologist, chaplain, attorney and law clerk are on the default skip list.

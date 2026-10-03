@@ -65,6 +65,29 @@ class ProfileStep(unittest.TestCase):
         self.assertEqual(sources.home_town(ps.get_profile()), "Melbourne, FL")
 
 
+class Progress(unittest.TestCase):
+    def test_phases_and_warnings(self):
+        import fit, search, time
+        app.init_db(); search.init(app.db, app._db_lock)
+        self.assertEqual(app.progress()["phase"], "")
+        search._state.update(running=True, current="L3Harris", step=6, steps=21, t0=time.time() - 600)
+        try:
+            p = app.progress()
+        finally:
+            search._state.update(running=False, current="", step=0, steps=0, t0=None)
+        self.assertEqual((p["phase"], p["step"], p["steps"]), ("scan", 7, 21))
+        self.assertGreater(p["left"], 1000)   # 100 s per source so far x 15 left
+        fit._state.update(running=True, done=10, total=40, started=time.time() - 100, provider="anthropic")
+        try:
+            p = app.progress()
+        finally:
+            fit._state.update(running=False)
+        self.assertEqual(p["phase"], "rate"); self.assertAlmostEqual(p["left"], 300, delta=5)
+        search.save_config({"fit_provider": "off"})
+        self.assertTrue(app.progress()["fit_off"])
+        search.save_config({"fit_provider": "anthropic"})
+
+
 class ClaudeRequest(unittest.TestCase):
     def test_system_cached_and_model_override(self):
         sent = {}
