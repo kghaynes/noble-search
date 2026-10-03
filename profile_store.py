@@ -36,21 +36,7 @@ PROFILE_DEFAULTS = {
     "lanes": "",
     "target_employers": "",
     "notes": "",
-    # military background (used to translate into civilian titles, searches and fit)
-    "mil_branch": "",       # e.g. U.S. Army
-    "mil_rank": "",         # highest rank / pay grade, e.g. Colonel (O-6), Master Sergeant (E-8)
-    "mil_codes": "",        # MOS / AFSC / NEC / rating / designator codes, one per line, e.g. 25A Signal Officer
-    "mil_skill_ids": "",    # ASI / SQI / SI / special qualifications, schools, badges
 }
-
-
-def military_text(p):
-    """Plain-text military background block for AI prompts ('' if none given)."""
-    lines = [f"{lbl}: {str(p.get(k) or '').strip()}" for k, lbl in (
-        ("mil_branch", "Branch"), ("mil_rank", "Highest rank / pay grade"),
-        ("mil_codes", "Occupation codes (MOS/AFSC/NEC/designator)"),
-        ("mil_skill_ids", "Skill identifiers, qualifications, schools")) if str(p.get(k) or "").strip()]
-    return "\n".join(lines)
 
 SETTINGS_DEFAULTS = {
     "provider": "anthropic",  # anthropic | ollama
