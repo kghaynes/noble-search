@@ -1,4 +1,7 @@
 # Noble Search
+[![tests](https://github.com/kghaynes/noble-search/actions/workflows/tests.yml/badge.svg)](https://github.com/kghaynes/noble-search/actions/workflows/tests.yml)
+[![release](https://img.shields.io/github/v/release/kghaynes/noble-search)](https://github.com/kghaynes/noble-search/releases)
+[![license: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)](LICENSE.md)
 
 **A job search tool for transitioning military and veterans.**
 
@@ -8,10 +11,6 @@ Transitioning from a career in military service the civilian sector is maddening
 Yes, it's a tough job market. But for recently transitioning veterans who are entering it for the first time, the problem appears substantially worse. Nearly one-third of veteran job seekers are underemployed, about 15% higher than non-veterans. A longitudinal study found 61% were underemployed three years after leaving the military. That broader measure includes jobs that do not adequately use the veteran’s skills, education, or experience (Syracuse study). It is a major contributing factor to the veteran suicide rate of nearly 18 veterans per day (2023 data). Let that sink in for a moment.
 
 I care about my fellow soldiers and veterans (airman, marines, sailors, guardians, and coasties too!). So Noble-Search is born out of my personal frustration and a means to give back and serve my community....  "Just imagine if every Colonel took the time, each day, to solve the problem one Soldier faces. Just imagine how great our Army could be." - GEN Richard Cody to a (then) young Major Ken Haynes circa 2006.
-
-[![tests](https://github.com/kghaynes/noble-search/actions/workflows/tests.yml/badge.svg)](https://github.com/kghaynes/noble-search/actions/workflows/tests.yml)
-[![release](https://img.shields.io/github/v/release/kghaynes/noble-search)](https://github.com/kghaynes/noble-search/releases)
-[![license: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)](LICENSE.md)
 
 <p align="center">
   <img src="docs/screenshots/tour.gif" alt="Noble Search tour: rated jobs, search sources, employer finder, settings, draft library, phone view, getting started" width="900">
