@@ -43,6 +43,44 @@ class Suggest(unittest.TestCase):
         self.assertEqual(r["text"], "Springfield, IL\nChatham, IL")
 
 
+class Titles(unittest.TestCase):
+    def setUp(self):
+        self._orig = llm.complete
+        self.addCleanup(setattr, llm, "complete", self._orig)
+
+    def test_military_translation_to_lists(self):
+        ps.save_profile({"mil_branch": "U.S. Army", "mil_rank": "Lieutenant Colonel (O-5)",
+                         "mil_codes": "25A Signal Officer\nFA26 Network Systems Engineer", "mil_skill_ids": "ASI 6R"})
+        seen = {}
+
+        def fake(settings, system, user, **k):
+            seen["system"], seen["user"] = system, user
+            return json.dumps({"translations": ["25A Signal Officer -> IT / network operations leader"],
+                               "example_titles": ["Director of IT Operations"],
+                               "levels": ["Director", "Head of", "director"], "fields": ["IT", "Cyber/Network"],
+                               "skip": ["Sales"]}), "anthropic", "m"
+        llm.complete = fake
+        r = suggest.suggest("titles")
+        self.assertIn("25A Signal Officer", seen["user"]); self.assertIn("MOS", seen["system"])
+        self.assertEqual(r["levels"], ["director", "head of"])
+        self.assertEqual(r["fields"], [r"\bit\b", "cyber", "network"])
+        self.assertEqual(r["skip"], ["sales"])
+
+    def test_field_words_narrow_matches(self):
+        import sources
+        c = sources.Context({"title_include": "director", "title_fields": "\\bit\\b\ncyber", "title_exclude": ""}, {})
+        self.assertTrue(c.title_ok("Director, IT Infrastructure"))
+        self.assertTrue(c.title_ok("Director of Cyber Operations"))
+        self.assertFalse(c.title_ok("Director of Nursing"))
+        self.assertFalse(c.title_allowed("Physical Scientist"))       # senior federal grade still needs the field
+        self.assertTrue(sources.Context({"title_include": "director"}, {}).title_ok("Director of Finance"))  # no fields = any
+
+    def test_fit_prompt_includes_military(self):
+        import fit
+        sp = fit.system_prompt({"mil_codes": "17D Cyberspace Operations"}, "", [])
+        self.assertIn("MILITARY BACKGROUND", sp); self.assertIn("17D Cyberspace Operations", sp)
+
+
 class Setup(unittest.TestCase):
     def test_checklist(self):
         app.init_db()
