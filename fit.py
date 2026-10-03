@@ -62,9 +62,6 @@ def system_prompt(profile, inventory, resume_texts):
                    ("work_modes", "Work modes"), ("employment_types", "Employment types")):
         if str(profile.get(k) or "").strip():
             parts.append(f"{lbl}: {str(profile[k]).strip()}")
-    mil = ps.military_text(profile)
-    if mil:
-        parts += ["", "# MILITARY BACKGROUND (translate codes and rank into civilian scope and level)", mil]
     if str(profile.get("notes") or "").strip():
         parts += ["", "# CANDIDATE'S OWN NOTES", profile["notes"].strip()]
     if inventory.strip():

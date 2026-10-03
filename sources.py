@@ -275,7 +275,6 @@ class Context:
         self.any_title = any(l.strip() == "*" for l in inc.splitlines())
         self.include = _compile_lines("\n".join(l for l in inc.splitlines() if l.strip() != "*"))
         self.exclude = _compile_lines(cfg["title_exclude"] if "title_exclude" in cfg else DEFAULT_TITLE_EXCLUDE)
-        self.fields = _compile_lines(cfg.get("title_fields") or "")   # optional: title must also name the field
         self.max_age = int(cfg.get("max_age_days") or 30)
         self.today = date.today()
         modes = (profile.get("work_modes") or "On-site, Hybrid, Remote").lower()
@@ -325,24 +324,18 @@ class Context:
                     return f"{' '.join(words[:-n])}, {ab}"
         return ""
 
-    def field_ok(self, title):
-        """True when no field words are set, or the title names one of them."""
-        return not self.fields or any(r.search(_norm(title)) for r in self.fields)
-
     def title_allowed(self, title):
-        """Not excluded (skip list or internal-only) and in the user's field — used where a senior
-        federal grade stands in for a seniority word."""
+        """Not excluded (skip list or internal-only) — used where something else stands in for a title match."""
         t = _norm(title)
-        return not INTERNAL_ONLY.search(t) and not any(r.search(t) for r in self.exclude) and self.field_ok(title)
+        return not INTERNAL_ONLY.search(t) and not any(r.search(t) for r in self.exclude)
 
     def title_ok(self, title):
         if INTERNAL_ONLY.search(_norm(title)):
             return False   # open only to current employees: never useful to an outside candidate
         if self.any_title:
-            return not any(r.search(_norm(title)) for r in self.exclude) and self.field_ok(title)
+            return not any(r.search(_norm(title)) for r in self.exclude)
         t = _norm(title)
-        return (any(r.search(t) for r in self.include) and not any(r.search(t) for r in self.exclude)
-                and self.field_ok(title))
+        return any(r.search(t) for r in self.include) and not any(r.search(t) for r in self.exclude)
 
     def where(self, text, remote_flag=False, loose_remote=True):
         """Return 'local', 'remote' or None for a location string."""
