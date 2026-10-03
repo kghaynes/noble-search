@@ -2,7 +2,7 @@
 [![tests](https://github.com/kghaynes/noble-search/actions/workflows/tests.yml/badge.svg)](https://github.com/kghaynes/noble-search/actions/workflows/tests.yml)
 [![release](https://img.shields.io/github/v/release/kghaynes/noble-search)](https://github.com/kghaynes/noble-search/releases)
 [![last commit](https://img.shields.io/github/last-commit/kghaynes/noble-search)](https://github.com/kghaynes/noble-search/commits/main)
-[![python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](requirements.txt)
+[![python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue)](requirements.txt)
 [![docker](https://img.shields.io/badge/runs%20on-Docker-2496ED?logo=docker&logoColor=white)](#install)
 [![license: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)](LICENSE.md)
 [![built for veterans](https://img.shields.io/badge/built%20for-veterans-B22234)](#noble-search)
