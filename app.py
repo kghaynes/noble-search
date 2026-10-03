@@ -184,8 +184,9 @@ def setup_state(has_run):
     steps = [
         {"id": "ai", "done": ai, "view": "settings", "label": "Add your Claude API key",
          "hint": "Settings → AI model. It reads each job and writes your drafts (a few dollars a month)."},
-        {"id": "profile", "done": bool(p.get("full_name") and (p.get("home_location") or p.get("city_state"))),
-         "view": "profile", "label": "Fill in your Profile", "hint": "Name, contact details, home town and search radius, target levels and fields."},
+        {"id": "profile", "done": bool(p.get("full_name") and sources.Context({}, {})._home_city(p.get("home_location") or p.get("city_state") or "")),
+         "view": "profile", "label": "Fill in your Profile",
+         "hint": "Name, contact details, home town as \"Town, ST\" (or a full address), search radius, target levels and fields."},
         {"id": "career", "done": bool(ps.list_resumes()) or len(ps.get_inventory().strip()) > 200,
          "view": "profile", "label": "Upload your resume (.docx) and build your career inventory",
          "hint": "Drafts only use facts from these. The more detail (budgets, headcount, results), the better."},
