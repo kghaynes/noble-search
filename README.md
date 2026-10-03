@@ -618,6 +618,7 @@ Noble Search © 2026 Kenneth Haynes and CyberCloudAI (<https://cybercloudai.tech
 It is licensed under the **PolyForm Noncommercial License 1.0.0**. The full text is in [LICENSE.md](LICENSE.md).
 
 - **You may** use, copy and change it for personal job searching, study and other noncommercial purposes. Charities, schools, public-safety and government organizations may use it too.
+- **Job hunting counts as noncommercial.** Using Noble Search to look for your own job, including contract or consulting work, is a permitted use. This is written into [LICENSE.md](LICENSE.md) as an additional permission.
 - **You may not** sell it, offer it as a paid service, or use it commercially **without written permission**. For commercial licensing, contact CyberCloudAI.
 
 "Noncommercial" means this is *source-available*. It is not "open source" in the OSI sense.

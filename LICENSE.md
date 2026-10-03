@@ -1,4 +1,5 @@
 Required Notice: Copyright (c) 2026 Kenneth Haynes and CyberCloudAI (https://cybercloudai.tech). Noble Search. Commercial use or reuse is prohibited without written permission.
+Required Notice: Additional permission from the licensor: using Noble Search to look for your own employment, including full-time, part-time, contract or consulting work, is a permitted noncommercial purpose under this license. This permission does not cover offering Noble Search to others as a paid product or service.
 
 # PolyForm Noncommercial License 1.0.0
 
