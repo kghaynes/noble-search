@@ -6,7 +6,7 @@
 **A job search tool for transitioning military and veterans.**
 
 **Why I built this..**
-Transitioning from a career in military service the civilian sector is maddening. The service-member is faced with a maze of new challenges: how does his/her job history translate to civilian minded hire-mangers, how do you write a resume to address potential gaps, how do you find time to search dozens of job board listings to find an opportunity before it closes, how do you filter the thousands of fake/deadend/low match jobs? 
+Transitioning from a career in military service to the civilian sector is maddening. The service-member is faced with a maze of new challenges: how does his/her job history translate to civilian minded hire-mangers, how do you write a resume to address potential gaps, how do you find time to search dozens of job board listings to find an opportunity before it closes, how do you filter the thousands of fake/deadend/low match jobs? 
 
 Yes, it's a tough job market. But for recently transitioning veterans who are entering it for the first time, the problem appears substantially worse. Nearly one-third of veteran job seekers are underemployed, about 15% higher than non-veterans. A longitudinal study found 61% were underemployed three years after leaving the military. That broader measure includes jobs that do not adequately use the veteran’s skills, education, or experience (Syracuse study). It is a major contributing factor to the veteran suicide rate of nearly 18 veterans per day (2023 data). Let that sink in for a moment.
 
