@@ -3,16 +3,27 @@
 All notable changes are listed here. Versions follow [semantic versioning](https://semver.org/): 0.x.y while the project is young.
 
 ## [Unreleased]
-- **Progress box** on the Jobs and Search pages while a search or rating runs: which step (search sources → rate fit & gaps → ready), which source or job it is on, a progress bar, an estimated time left, a Stop button, and a reminder that it keeps running if you close the page. First searches are flagged as the slow one (15–30+ minutes).
-- **Warnings** when fit rating is turned off while jobs are waiting (with a one-click "Turn rating on & rate them"), and when job boards have a key but no searches.
-- Getting started: the "Fill in your Profile" step now says exactly what is still missing (your name, or a home town the search can read). The home town is taken from Home location, or from City, State if that is the one filled in. The Profile page shows how the search reads your home town ("Search reads this as Melbourne, FL").
-- Fixed: if the Profile's home town couldn't be read (e.g. "Melbourne, Florida" or an address without commas), the USAJOBS "near home" search ran nationwide and kept hundreds of jobs. Home towns are now read in more formats, and the near-home search is skipped (with a note in the run summary) until a home town is set.
-- Fixed: senior federal jobs (GS-14+ or SES) skipped the "skip titles" list, so physician and similar jobs got through. The skip list now applies to them; physician, medical officer, nurse, dentist, pharmacist, veterinarian, psychologist, chaplain, attorney and law clerk are on the default skip list.
-- **Stop search** button on the Search page and in the Jobs header while a search runs. Jobs found so far are kept and rated; no summary email is sent for a stopped run.
-- Jobs page with no jobs now shows **Run your first search** (or **Choose where to search** if nothing is set up yet).
-- While setup is unfinished, every page shows a **Back to Getting started** bar with the next step.
-- Fixed: while a search was running, the Search page refreshed every 5 seconds and wiped anything typed or pasted (towns, searches) and the ✨ Suggest result. Now only the "Daily search" box refreshes.
-- The towns box says you can type or paste your own list; a Suggest error links straight to the Profile page.
+
+## [0.1.2] — 2026-10-03
+Fixes from the first fresh-install test, plus clearer feedback while a search runs.
+
+### Fixed
+- **USAJOBS searched the whole country.** If the Profile's home town couldn't be read (for example "Melbourne, Florida" or an address without commas), the "near home" federal search ran nationwide and kept hundreds of jobs. Home towns are now read in many more formats, and the near-home search is skipped — with a note in the run summary — until a home town is set.
+- **Off-target senior federal jobs.** GS-14+ and SES jobs bypassed the "skip titles" list, so physician and similar jobs got through. The skip list now applies to them, and physician, medical officer, nurse, dentist, pharmacist, veterinarian, psychologist, chaplain, attorney and law clerk are on the default skip list.
+- **Typing wiped during a search.** While a search ran, the Search page refreshed every 5 seconds and erased anything typed or pasted (towns, searches) and the ✨ Suggest result. Now only the "Daily search" box refreshes.
+- **"Fill in your Profile" stayed unchecked** with no explanation. It now says exactly what is missing (your name, or a home town the search can read), and accepts the home town from either Home location or City, State.
+
+### Added
+- **Progress box** on the Jobs and Search pages while a search or rating runs: the current step (search sources → rate fit & gaps → ready), the source or job being worked on, a progress bar, an estimated time left, and a reminder that it keeps running if you close the page. First searches are flagged as the slow one (15–30+ minutes).
+- **Stop search** button (progress box, Search page and Jobs header). Jobs found so far are kept and rated; no summary email is sent for a stopped run.
+- **Warnings with one-click fixes:** fit rating turned off while jobs wait to be rated ("Turn rating on & rate them"), and job boards with a key but no searches ("Add searches").
+- **Run your first search** button on an empty Jobs page (or **Choose where to search** if nothing is set up yet).
+- **Back to Getting started** bar on every page until setup is finished, naming the next step.
+- Profile page shows how the search reads your home town ("Search reads this as Melbourne, FL").
+- The towns box says you can type or paste your own list; a ✨ Suggest error links straight to the Profile page.
+
+### Upgrading
+Run `./scripts/update.sh` (your data and settings are kept). If you saved your own "skip titles" list before, it keeps your version — add the new medical/legal entries yourself if you want them.
 
 ## [0.1.1] — 2026-10-03
 - Morning email redesigned as a short briefing: top 5 picks with fit, pay and closing-date labels, a "closing within 7 days" box, and a source summary. Reads well on a phone.
@@ -32,6 +43,7 @@ First public release.
 - Morning email and ntfy push; Draft Library; 30-day retention with a permanent watchlist.
 - Getting-started checklist; ✨ Suggest towns and searches; Claude API by default with optional local Ollama.
 
-[Unreleased]: https://github.com/kghaynes/noble-search/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/kghaynes/noble-search/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/kghaynes/noble-search/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/kghaynes/noble-search/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/kghaynes/noble-search/releases/tag/v0.1.0
