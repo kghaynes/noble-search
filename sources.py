@@ -257,6 +257,16 @@ def _norm(s):
     return re.sub(r"\s+", " ", re.sub(r"[-_/|~+]", " ", s)).strip().lower()
 
 
+def home_town(profile):
+    """The profile's home town as 'Town, ST' — from Home location, else from City, State. '' if neither can be read."""
+    c = Context.__new__(Context)
+    for k in ("home_location", "city_state"):
+        v = Context._home_city(c, (profile or {}).get(k) or "")
+        if v:
+            return v
+    return ""
+
+
 class Context:
     """Title/location/age rules shared by every reader, plus per-run counters."""
 
@@ -282,7 +292,7 @@ class Context:
         states = [p[1] for p in places if p[1]]
         self.home_state = max(set(states), key=states.count) if states else ""
         self.home_state_name = STATES.get(self.home_state, "")
-        self.home_city = self._home_city(profile.get("home_location") or "") or (places[0][2] if places else "")
+        self.home_city = home_town(profile) or (places[0][2] if places else "")
         if not places and self.home_city:  # no town list yet: at least count the home town itself
             name, _, st = self.home_city.partition(",")
             places = [(_norm(name), st.strip().upper()[:2], self.home_city)]

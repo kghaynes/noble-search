@@ -51,6 +51,20 @@ class Setup(unittest.TestCase):
         self.assertEqual([x["id"] for x in s["steps"]], ["ai", "profile", "career", "search", "run"])
 
 
+class ProfileStep(unittest.TestCase):
+    def test_says_what_is_missing(self):
+        app.init_db()
+        ps.save_profile({"full_name": "", "home_location": "Cape Canaveral", "city_state": ""})
+        step = next(x for x in app.setup_state(False)["steps"] if x["id"] == "profile")
+        self.assertFalse(step["done"])
+        self.assertIn("full name", step["hint"]); self.assertIn("home town", step["hint"])
+        ps.save_profile({"full_name": "Pat Example", "home_location": "Cape Canaveral", "city_state": "Melbourne, Florida"})
+        step = next(x for x in app.setup_state(False)["steps"] if x["id"] == "profile")
+        self.assertTrue(step["done"], step["hint"])   # City, State is used when Home location can't be read
+        import sources
+        self.assertEqual(sources.home_town(ps.get_profile()), "Melbourne, FL")
+
+
 class ClaudeRequest(unittest.TestCase):
     def test_system_cached_and_model_override(self):
         sent = {}

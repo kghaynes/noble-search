@@ -3,6 +3,7 @@
 All notable changes are listed here. Versions follow [semantic versioning](https://semver.org/): 0.x.y while the project is young.
 
 ## [Unreleased]
+- Getting started: the "Fill in your Profile" step now says exactly what is still missing (your name, or a home town the search can read). The home town is taken from Home location, or from City, State if that is the one filled in. The Profile page shows how the search reads your home town ("Search reads this as Melbourne, FL").
 - Fixed: if the Profile's home town couldn't be read (e.g. "Melbourne, Florida" or an address without commas), the USAJOBS "near home" search ran nationwide and kept hundreds of jobs. Home towns are now read in more formats, and the near-home search is skipped (with a note in the run summary) until a home town is set.
 - Fixed: senior federal jobs (GS-14+ or SES) skipped the "skip titles" list, so physician and similar jobs got through. The skip list now applies to them; physician, medical officer, nurse, dentist, pharmacist, veterinarian, psychologist, chaplain, attorney and law clerk are on the default skip list.
 - **Stop search** button on the Search page and in the Jobs header while a search runs. Jobs found so far are kept and rated; no summary email is sent for a stopped run.

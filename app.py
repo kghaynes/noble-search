@@ -180,13 +180,16 @@ def setup_state(has_run):
     s = ps.get_settings()
     p = ps.get_profile()
     cfg = search.get_config()
+    prof_missing = [x for x, ok in (("your full name", (p.get("full_name") or "").strip()),
+                                    ('a home town the search can read, like "Melbourne, FL" (Home location or City, State)',
+                                     sources.home_town(p))) if not ok]
     ai = (s.get("provider") == "ollama" and bool(s.get("ollama_model"))) or bool(s.get("anthropic_key_set"))
     steps = [
         {"id": "ai", "done": ai, "view": "settings", "label": "Add your Claude API key",
          "hint": "Settings → AI model. It reads each job and writes your drafts (a few dollars a month)."},
-        {"id": "profile", "done": bool(p.get("full_name") and sources.Context({}, {})._home_city(p.get("home_location") or p.get("city_state") or "")),
-         "view": "profile", "label": "Fill in your Profile",
-         "hint": "Name, contact details, home town as \"Town, ST\" (or a full address), search radius, target levels and fields."},
+        {"id": "profile", "done": not prof_missing, "view": "profile", "label": "Fill in your Profile",
+         "hint": ("Still needed: " + "; ".join(prof_missing) + ".") if prof_missing else
+                 "Name, contact details, home town, search radius, target levels and fields."},
         {"id": "career", "done": bool(ps.list_resumes()) or len(ps.get_inventory().strip()) > 200,
          "view": "profile", "label": "Upload your resume (.docx) and build your career inventory",
          "hint": "Drafts only use facts from these. The more detail (budgets, headcount, results), the better."},
@@ -291,6 +294,7 @@ class Handler(BaseHTTPRequestHandler):
         qs = parse_qs(urlparse(self.path).query)
         if path == "/profile":
             return self._json(200, {"profile": ps.get_profile(), "resumes": ps.list_resumes(),
+                                    "home_read": sources.home_town(ps.get_profile()),
                                     "inventory": ps.get_inventory(),
                                     "inventory_drafts": drafts.list_for(drafts.PROFILE_KEY)[:3]})
         if path == "/settings":

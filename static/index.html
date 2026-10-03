@@ -593,11 +593,16 @@ function refreshPanel(key){ const el = document.getElementById('dp-'+key); if(el
 const PF = [['full_name','Full name'],['city_state','City, State'],['phone','Phone'],['email','Email'],['linkedin','LinkedIn URL'],['clearance','Clearance (as you want it shown)']];
 const PREF = [['home_location','Home location (for commute radius)'],['radius_miles','Radius (miles)'],['work_modes','Work modes'],['employment_types','Employment types'],
   ['levels','Target levels','ta'],['lanes','Target role lanes','ta'],['target_employers','Target employers','ta'],['notes','Anything else a writer should know','ta']];
+function homeNoteHTML(read){
+  return read ? `<span class="hint">Search reads this as <b>${esc(read)}</b>.</span>`
+    : `<span class="hint err">Enter your home town as "Town, ST" (e.g. Melbourne, FL) or a full address, then Save — the search needs it to find jobs near you.</span>`;
+}
 async function renderProfile(){
   const v = $('#view'); v.innerHTML = '<div class="empty"><span class="spin"></span></div>';
   const d = await api('/profile'); S.profile = d;
+  const homeNote = () => `<span id="homeNote">${homeNoteHTML(d.home_read)}</span>`;
   const f = (k,l,t) => t==='ta' ? `<label class="fld full">${l}<textarea data-pf="${k}">${esc(d.profile[k])}</textarea></label>`
-                                : `<label class="fld">${l}<input data-pf="${k}" value="${esc(d.profile[k])}"></label>`;
+                                : `<label class="fld">${l}<input data-pf="${k}" value="${esc(d.profile[k])}" ${k==='home_location'?'placeholder="Melbourne, FL"':''}>${k==='home_location'?homeNote():''}</label>`;
   const inv = d.inventory_drafts && d.inventory_drafts[0];
   v.innerHTML = `<div class="page">
     <section class="box"><h2>Contact & basics</h2><div class="hint">Printed at the top of every draft. Kept on this server only.</div>
@@ -645,6 +650,7 @@ async function onProfileAct(a, t){
   if(a==='p_save'){
     const p = {}; document.querySelectorAll('[data-pf]').forEach(el => p[el.dataset.pf] = el.value);
     await api('/profile/save', {profile:p}); toast('Profile saved');
+    try{ const d = await api('/profile'); const n = $('#homeNote'); if(n) n.innerHTML = homeNoteHTML(d.home_read); }catch{}
   }
   if(a==='p_saveinv'){ await api('/profile/save', {inventory:$('#inv').value}); $('#invstat').textContent = 'Saved · '+$('#inv').value.length.toLocaleString()+' characters'; toast('Inventory saved'); }
   if(a==='p_tpl'){ await api('/profile/set-template', {name:t.dataset.name}); toast('Layout template set'); }
