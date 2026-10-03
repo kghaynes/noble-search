@@ -127,6 +127,8 @@ details.qs summary{cursor:pointer;margin:4px 0}
 details.howto{margin:4px 0 10px;font-size:13px}details.howto summary{cursor:pointer;color:var(--accent,#2b59c3);font-weight:600}
 details.howto ol{margin:6px 0 0;padding-left:20px;line-height:1.55}details.howto a{color:var(--accent,#2b59c3)}
 details.howto code{font-size:12px;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+.setupbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:var(--accent-soft,#e8eeff);border:1px solid var(--accent);border-radius:10px;padding:9px 14px;margin:12px 0 0;font-size:14px}
+.setupbar .btn{font-weight:700}
 .setup{background:var(--panel);border:1px solid var(--accent);border-radius:12px;padding:14px 16px;margin:12px 0}
 .setup .sh{display:flex;gap:10px;align-items:baseline}.setup ol{list-style:none;margin:8px 0 0;padding:0}
 .setup li{display:flex;gap:10px;padding:6px 0;border-top:1px solid var(--line)}.setup li:first-child{border-top:0}
@@ -188,6 +190,7 @@ body{padding-bottom:56px}
   </div>
 </header>
 <main class="wrap" id="list"></main>
+<div class="wrap" id="setupbar" hidden></div>
 <main class="wrap" id="view" hidden></main>
 <div class="toast" id="toast"></div>
 <footer class="legal">Noble Search &copy; 2026 Kenneth Haynes and <a href="https://cybercloudai.tech" target="_blank" rel="noopener">CyberCloudAI.tech</a>. Licensed under the <a href="https://polyformproject.org/licenses/noncommercial/1.0.0/" target="_blank" rel="noopener">PolyForm Noncommercial License 1.0.0</a>. Commercial use or reuse is prohibited without written permission.</footer>
@@ -232,7 +235,9 @@ function renderSync(s, q){
   if(f && f.running) parts.unshift(`Rating fit ${f.done}/${f.total}…`);
   else if(f && f.last_error && f.errors) { err = true; parts.push(`Fit rating problem: ${f.last_error}`); }
   el.className = 'sync' + (err ? ' err' : '');
-  el.textContent = (parts.length ? parts.join(' · ') : 'Not searched yet') + ` · ${S.jobs.length} jobs`;
+  el.innerHTML = esc((parts.length ? parts.join(' · ') : 'Not searched yet') + ` · ${S.jobs.length} jobs`)
+    + (q && q.status && q.status.running ? ' <button class="linkbtn" data-act="q_stop">Stop search</button>' : '');
+  S.searching = !!(q && q.status && q.status.running);
   clearTimeout(S.syncPoll);
   if(((q && q.status && q.status.running) || (f && f.running)) && S.view==='jobs') S.syncPoll = setTimeout(load, 15000);
 }
@@ -275,9 +280,19 @@ function render(){
   const hidden = tabAll - a.length;
   const banner = on && hidden > 0 ? `<div class="fbar">Filters are hiding ${hidden} job${hidden>1?'s':''} in this tab. <button class="linkbtn" id="btnClear">Clear filters</button></div>` : '';
   $('#list').innerHTML = setupHTML() + banner + (a.length ? a.map(card).join('') :
-    `<div class="empty">${!S.jobs.length ? 'No jobs yet. Finish the getting-started steps above, then run a search.' : S.tab==='watch' && tabAll===0 ? 'Nothing on your watchlist yet. Click ★ Interested on any job to keep it here permanently.' : 'No jobs match these filters.'}</div>`);
+    `<div class="empty">${!S.jobs.length ? emptyJobs() : S.tab==='watch' && tabAll===0 ? 'Nothing on your watchlist yet. Click ★ Interested on any job to keep it here permanently.' : 'No jobs match these filters.'}</div>`);
   const cb = document.getElementById('btnClear'); if(cb) cb.onclick = clearFilters;
   const hs = document.getElementById('btnHideSetup'); if(hs) hs.onclick = () => { try{ localStorage.setItem('ns_hide_setup','1'); }catch{} render(); };
+}
+function emptyJobs(){
+  if(S.searching) return `<div style="font-size:16px;margin-bottom:10px"><span class="spin"></span> Searching now — jobs appear here as they're found.</div>
+    <button class="btn" data-act="q_stop">Stop search</button>`;
+  const ready = S.setup && (S.setup.steps.find(x=>x.id==='search')||{}).done;
+  return `<div style="font-size:16px;margin-bottom:12px">No jobs yet.</div>` + (ready
+    ? `<button class="btn primary" data-act="j_firstrun" style="font-size:15px;padding:10px 18px">&#128269; Run your first search</button>
+       <div class="hint" style="margin-top:8px">Takes 5–15 minutes the first time. You can keep working while it runs.</div>`
+    : `<button class="btn primary" data-view="search" style="font-size:15px;padding:10px 18px">Choose where to search</button>
+       <div class="hint" style="margin-top:8px">Add employers or job-board keys first, then run your first search.</div>`);
 }
 function setupHTML(){
   const s = S.setup; if(!s || s.done) return '';
@@ -335,7 +350,7 @@ document.addEventListener('click', async e => {
   if(t.dataset.open){ update(t.dataset.open, {viewed:1}).then(render); return; }
   if(t.dataset.draft !== undefined){ toggleDraft(t.dataset.draft); return; }
   if(t.dataset.view){ setView(t.dataset.view); return; }
-  if(t.dataset.act){ onAct(t); return; }
+  if(t.dataset.act){ await onAct(t); if(S.view!=='jobs') refreshSetupBar(); return; }
 });
 const timers = {};
 document.addEventListener('input', e => {
@@ -382,7 +397,19 @@ function setView(v){
   if(v==='settings') renderSettings();
   if(v==='search') renderSearch();
   if(v==='jobs') load();
+  refreshSetupBar();
   window.scrollTo(0,0);
+}
+async function refreshSetupBar(){
+  const bar = $('#setupbar');
+  if(S.view==='jobs'){ bar.hidden = true; return; }
+  try{ S.setup = await api('/jobs/setup'); }catch{ return; }
+  const s = S.setup;
+  if(!s || s.done){ bar.hidden = true; return; }
+  const n = s.steps.filter(x=>x.done).length, next = s.steps.find(x=>!x.done);
+  bar.innerHTML = `<div class="setupbar"><button class="btn primary" data-view="jobs">&larr; Back to Getting started</button>
+    <span><b>${n} of ${s.steps.length} done.</b> ${next ? 'Next: ' + (next.view===S.view ? `<b>${esc(next.label)}</b> (this page)` : `<button class="linkbtn" data-view="${next.view}">${esc(next.label)}</button>`) : ''}</span></div>`;
+  bar.hidden = false;
 }
 
 /* ============================== drafts panel ============================== */
@@ -508,6 +535,9 @@ function verHTML(key, d){
 async function onAct(t){
   const a = t.dataset.act, key = t.dataset.k, id = +t.dataset.id;
   try{
+    if(a==='j_firstrun'){
+      t.disabled = true; await api('/search/run', {}); toast('Search started'); S.searching = true; render(); setTimeout(load, 4000); return;
+    }
     if(a==='rate'){
       await api('/jobs/rate', {job_key:key}); toast('Rating… takes about a minute on the local model');
       S.fitState = {running:true, done:0, total:1}; setTimeout(load, 20000); return;
@@ -783,18 +813,24 @@ async function renderSearch(keep){
       ${run.detail.map(x=>`<tr class="${x.ok===false?'bad':''}"><td>${esc(x.name)}</td><td>${esc(d.readers[x.type]||x.type)}</td><td class="num">${x.scanned??''}</td><td class="num">${x.title_matches??''}</td><td class="num">${x.kept??''}</td><td class="num">${x.added??''}</td><td class="num">${x.seconds??''}</td>
         <td>${x.skipped?`<span class="hint">${esc(x.skipped)}</span>`:''}${x.note?`<span class="hint">${esc(x.note)}</span>`:''}${(x.errors||[]).length?`<span class="err">${esc(x.errors.join(' · '))}</span>`:''}</td></tr>`).join('')}
       </tbody></table></div></details>` : '<div class="hint">No searches yet. Click Run now to try it.</div>';
-  v.innerHTML = `<div class="page">
-    <section class="box"><h2>Daily search</h2>
+  const daily = `<section class="box" id="q_daily"><h2>Daily search</h2>
       <div class="hint">Runs on this server. Reads each employer's own hiring system, USAJOBS and the job boards, keeps senior roles near home or remote, rates them, and adds them to your Jobs list. Your statuses and notes are never changed. Keys, models and email are on the <button class="linkbtn" data-view="settings">Settings</button> page.</div>
       ${missing.length?`<div class="fbar" style="margin-top:8px">Not set up yet: ${missing.join(', ')}. <button class="linkbtn" data-view="settings">Open Settings</button></div>`:''}
       <div class="row" style="margin:8px 0">
-        ${st.running?`<span class="pill warn"><span class="spin"></span> Running · ${esc(st.current)}</span>`:`<button class="btn primary" data-act="q_run">Run now</button>`}
+        ${st.running?`<span class="pill warn"><span class="spin"></span> Running · ${esc(st.current)}</span> <button class="btn" data-act="q_stop">Stop search</button>`:`<button class="btn primary" data-act="q_run">Run now</button>`}
         ${d.fit.running?`<span class="pill warn"><span class="spin"></span> Rating ${d.fit.done}/${d.fit.total}</span>`:(d.unrated?`<button class="btn" data-act="q_rate">Rate ${d.unrated} unrated job${d.unrated===1?'':'s'}</button>`:'')}
         <span class="hint">${c.enabled ? (d.next_run?'Next scheduled run: '+fmtTime(d.next_run):'') : 'Schedule is off'}</span>
         ${d.fit.errors?`<span class="hint err">Rating: ${d.fit.errors} failed · ${esc(d.fit.last_error)}</span>`:''}
       </div>
       ${runTable}
-    </section>
+    </section>`;
+  // While a search runs, only this section refreshes — so nothing you are typing below gets wiped.
+  if(keep && document.getElementById('q_daily')){
+    document.getElementById('q_daily').outerHTML = daily;
+    bindRunlog(); pollSearch(st, d); return;
+  }
+  v.innerHTML = `<div class="page">
+    ${daily}
     <section class="box"><h2>Schedule</h2>
       <div class="grid2">
         <label class="radio"><input type="checkbox" id="q_enabled" ${c.enabled?'checked':''}> Run automatically</label>
@@ -852,14 +888,17 @@ chief information security officer remote">${esc(c.jsearch_queries)}</textarea><
           <span class="hint">Fills the list below; edit it any way you like. "*" means any title.</span></label>
         <label class="fld">Title must contain one of (one per line)<textarea id="q_inc" rows="10">${esc(c.title_include)}</textarea></label>
         <label class="fld">Skip titles containing (one per line)<textarea id="q_exc" rows="10">${esc(c.title_exclude)}</textarea></label>
-        <label class="fld full">Towns that count as near home (one per line, "Town, ST")<textarea id="q_places" rows="6" placeholder="Leave empty to use only your home town from the Profile">${esc(c.local_places)}</textarea>
-          <span class="row" style="margin:4px 0"><button class="btn" type="button" data-act="q_suggest" data-what="towns">✨ Suggest towns near my home</button><span class="hint" id="sg_towns"></span></span>
-          <span class="hint">Remote jobs are kept too when your Profile work modes include Remote. Lines are matched as words; advanced users can use regular expressions.</span></label>
+        <label class="fld full">Towns that count as near home (one per line, "Town, ST")<textarea id="q_places" rows="6" placeholder="Type or paste towns, one per line, e.g.&#10;Melbourne, FL&#10;Palm Bay, FL&#10;Leave empty to use only your home town from the Profile">${esc(c.local_places)}</textarea></label>
+        <div class="fld full" style="margin-top:-6px"><span class="row" style="margin:0 0 4px"><button class="btn" type="button" data-act="q_suggest" data-what="towns">✨ Suggest towns near my home</button><span class="hint" id="sg_towns"></span></span>
+          <span class="hint">You can also type or paste your own list. Remote jobs are kept too when your Profile work modes include Remote. Lines are matched as words; advanced users can use regular expressions. Click <b>Save search settings</b> when done.</span></div>
         <label class="fld">Federal jobs: lowest grade to keep (GS)<input id="q_ugrade" type="number" min="1" max="15" value="${esc(c.usajobs_min_grade)}"></label>
       </div></section>
     <div class="row"><button class="btn primary" data-act="q_save">Save search settings</button></div>
   </div>`;
-  const rl = v.querySelector('details.runlog'); if(rl) rl.addEventListener('toggle', () => { S.runOpen = rl.open; });
+  bindRunlog(); pollSearch(st, d);
+}
+function bindRunlog(){ const rl = document.querySelector('#q_daily details.runlog'); if(rl) rl.addEventListener('toggle', () => { S.runOpen = rl.open; }); }
+function pollSearch(st, d){
   clearTimeout(S.qPoll);
   if(st.running || d.fit.running) S.qPoll = setTimeout(()=>{ if(S.view==='search') renderSearch(true); }, 5000);
 }
@@ -892,6 +931,7 @@ async function onSearchAct(a, t){
   if(a==='q_save'){ await api('/search/save', collectSearch()); toast('Search settings saved'); S.qBoards=null; renderSearch(); }
   if(a==='q_run'){ await api('/search/save', collectSearch()); await api('/search/run', {}); toast('Search started'); S.qBoards=null; renderSearch(true); }
   if(a==='q_one'){ await api('/search/save', collectSearch()); const b = S.qBoards[+t.dataset.i]; await api('/search/run', {only:[b.name]}); toast('Checking '+b.name); S.qBoards=null; renderSearch(true); }
+  if(a==='q_stop'){ await api('/search/stop', {}); toast('Stopping — jobs found so far are kept'); if(S.view==='search') renderSearch(true); else setTimeout(load, 1500); return; }
   if(a==='q_rate'){ await api('/jobs/rate', {}); toast('Rating started'); renderSearch(true); }
   if(a==='q_find'){
     const name = $('#f_name').value.trim(), site = $('#f_site').value.trim();
@@ -919,7 +959,8 @@ async function onSearchAct(a, t){
     if(box.value.trim() && !confirm('Replace what is in this box with AI suggestions?')) return;
     t.disabled = true; out.className='hint'; out.innerHTML = '<span class="spin"></span> Asking the AI model…';
     try{ const r = await api('/search/suggest', {what}); box.value = r.text; out.textContent = '✓ '+r.detail; }
-    catch(e){ out.className='hint err'; out.textContent = '✗ '+(e.message||e); }
+    catch(e){ out.className='hint err'; out.textContent = '✗ '+(e.message||e);
+      if(/Profile/.test(e.message||'')) out.insertAdjacentHTML('beforeend', ' <button class="linkbtn" data-view="profile">Open Profile</button>'); }
     finally{ t.disabled = false; }
   }
 }

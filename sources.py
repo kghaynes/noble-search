@@ -11,6 +11,7 @@ Stdlib only.
 import html
 import json
 import re
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -97,7 +98,12 @@ class ReaderError(Exception):
     pass
 
 
+STOP = threading.Event()   # set by "Stop search"; every reader's network calls end quickly
+
+
 def http(url, data=None, headers=None, timeout=30, as_json=True, retries=2):
+    if STOP.is_set():
+        raise ReaderError("Stopped by you")
     body = None
     hdrs = {"User-Agent": UA, "Accept": "application/json" if as_json else "text/html,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9"}

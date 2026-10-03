@@ -279,6 +279,8 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/", "/index.html"):
             with open(os.path.join(STATIC_DIR, "index.html"), "rb") as f:
                 return self._send(200, f.read(), "text/html; charset=utf-8")
+        if path == "/jobs/setup":
+            return self._json(200, setup_state(bool(search.recent_runs(1))))
         if path == "/jobs/list":
             runs = search.recent_runs(1)
             return self._json(200, {"jobs": list_jobs(), "fit": fit.status(), "search": {
@@ -401,6 +403,8 @@ class Handler(BaseHTTPRequestHandler):
             return discover.discover(name, str(data.get("website") or "").strip(), search.get_config(include_secret=True))
         if path == "/search/suggest":
             return suggest.suggest(str(data.get("what") or ""))
+        if path == "/search/stop":
+            return {"ok": search.stop()}
         if path == "/search/run":
             only = data.get("only") or None
             try:

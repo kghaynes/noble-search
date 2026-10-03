@@ -3,6 +3,11 @@
 All notable changes are listed here. Versions follow [semantic versioning](https://semver.org/): 0.x.y while the project is young.
 
 ## [Unreleased]
+- **Stop search** button on the Search page and in the Jobs header while a search runs. Jobs found so far are kept and rated; no summary email is sent for a stopped run.
+- Jobs page with no jobs now shows **Run your first search** (or **Choose where to search** if nothing is set up yet).
+- While setup is unfinished, every page shows a **Back to Getting started** bar with the next step.
+- Fixed: while a search was running, the Search page refreshed every 5 seconds and wiped anything typed or pasted (towns, searches) and the ✨ Suggest result. Now only the "Daily search" box refreshes.
+- The towns box says you can type or paste your own list; a Suggest error links straight to the Profile page.
 
 ## [0.1.1] — 2026-10-03
 - Morning email redesigned as a short briefing: top 5 picks with fit, pay and closing-date labels, a "closing within 7 days" box, and a source summary. Reads well on a phone.

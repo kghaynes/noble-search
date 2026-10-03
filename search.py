@@ -282,12 +282,22 @@ def recent_runs(limit=10):
     return rows
 
 
+def stop():
+    """Ask a running search to stop. The current source ends at its next network call."""
+    if not _state["running"]:
+        return False
+    sources.STOP.set()
+    _state["current"] = "stopping…"
+    return True
+
+
 def run(trigger="manual", listing_fields=None, only=None):
     """Run every enabled source (or only the named ones). Blocking. Returns the run record id."""
     if not _run_lock.acquire(blocking=False):
         raise RuntimeError("A search is already running")
     db_fn, lock = _db
     try:
+        sources.STOP.clear()
         _state.update(running=True, current="starting", started=_now())
         with lock, db_fn() as conn:
             cur = conn.execute("INSERT INTO search_runs(started, trigger, status) VALUES(?,?, 'running')",
@@ -314,23 +324,34 @@ def run(trigger="manual", listing_fields=None, only=None):
         boards = cfg.get("boards") or []
         if only:
             boards = [b for b in boards if b.get("name") in only]
+        steps = []
         if not only or "USAJOBS" in only:
-            _state["current"] = "USAJOBS"
-            save(*sources.read_usajobs(cfg, ctx))
+            steps.append(("USAJOBS", lambda: sources.read_usajobs(cfg, ctx)))
         if not only or "JSearch (job boards)" in only:
-            _state["current"] = "JSearch (job boards)"
-            save(*sources.read_jsearch(cfg, ctx))
-        for b in boards:
-            _state["current"] = b.get("name")
-            save(*sources.run_board(b, ctx))
+            steps.append(("JSearch (job boards)", lambda: sources.read_jsearch(cfg, ctx)))
+        steps += [(b.get("name"), (lambda b=b: sources.run_board(b, ctx))) for b in boards]
+        for name, step in steps:
+            if sources.STOP.is_set():
+                break
+            _state["current"] = name
+            save(*step())
+        stopped = sources.STOP.is_set()
         bad = sum(1 for d in detail if not d.get("ok"))
-        stat = "done" if not bad else ("partial" if bad < len(detail) else "failed")
+        stat = "stopped" if stopped else "done" if not bad else ("partial" if bad < len(detail) else "failed")
         with lock, db_fn() as conn:
             conn.execute("UPDATE search_runs SET status=?, finished=? WHERE id=?", (stat, _now(), run_id))
-        notify.after_search(run_id, trigger, cfg)  # rate the new jobs, then email / push the summary
+        if stopped:   # keep what was found and rate it, but no summary email for a stopped run
+            if cfg.get("fit_provider", "anthropic") != "off" and new_keys:
+                try:
+                    fit.run_async()
+                except RuntimeError:
+                    pass
+        else:
+            notify.after_search(run_id, trigger, cfg)  # rate the new jobs, then email / push the summary
         return run_id
     finally:
         _state.update(running=False, current="", started=None)
+        sources.STOP.clear()
         _run_lock.release()
 
 
