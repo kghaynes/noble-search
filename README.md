@@ -1,6 +1,13 @@
 # Noble Search
 
-**A job search portal for transitioning military and veterans.**
+**A job search tool for transitioning military and veterans.**
+
+**Why I built this..**
+Transitioning from a career in military service the civilian sector is maddening. The service-member is faced with a maze of new challenges: how does his/her job history translate to civilian minded hire-mangers, how do you write a resume to address potential gaps, how do you find time to search dozens of job board listings to find an opportunity before it closes, how do you filter the thousands of fake/deadend/low match jobs? 
+
+Yes, it's a tough job market. But for recently transitioning veterans who are entering it for the first time, the problem appears substantially worse. Nearly one-third of veteran job seekers are underemployed, about 15% higher than non-veterans. A longitudinal study found 61% were underemployed three years after leaving the military. That broader measure includes jobs that do not adequately use the veteran’s skills, education, or experience (Syracuse study). It is a major contributing factor to the veteran suicide rate of nearly 18 veterans per day (2023 data). Let that sink in for a moment.
+
+I care about my fellow soldiers and veterans (airman, marines, sailors, guardians, and coasties too!). So Noble-Search is born out of my personal frustration and a means to give back and serve my community....  "Just imagine if every Colonel took the time, each day, to solve the problem one Soldier faces. Just imagine how great our Army could be." - GEN Richard Cody to a (then) young Major Ken Haynes circa 2006.
 
 [![tests](https://github.com/kghaynes/noble-search/actions/workflows/tests.yml/badge.svg)](https://github.com/kghaynes/noble-search/actions/workflows/tests.yml)
 [![release](https://img.shields.io/github/v/release/kghaynes/noble-search)](https://github.com/kghaynes/noble-search/releases)
@@ -12,9 +19,11 @@
 
 Noble Search runs on your own computer. Every weekday morning it:
 
-1. **Searches** for senior jobs that match you. It looks at the hiring websites of employers you pick, at USAJOBS, and at the big job boards (LinkedIn, Indeed, Glassdoor, ZipRecruiter and others).
+1. **Searches** for jobs that match you and your preferences, not random free search texts. It looks at the hiring websites of employers you pick, at USAJOBS, and at the big job boards (LinkedIn, Indeed, Glassdoor, ZipRecruiter and others).
 2. **Rates each job** High, Medium or Low fit for *your* background. Each rating comes with a one-line reason in civilian terms and names any gap.
 3. **Emails you a short summary** (optional).
+4. **Pushes you a phone notification** (optional).
+5. **Uses Frontier or locally hosted AI Models**. 
 
 When you find a job you like, one click writes a **tailored resume** for it, as a Word file in your own resume's layout. Another click writes the **application text**: summary, work-history entries, screening answers and cover letter, ready to copy into the employer's application form.
 
@@ -100,7 +109,7 @@ On each job:
 
 ## What it costs
 
-The software is free for personal and noncommercial use (see [License](#license)). The services it uses:
+The software is **free** for personal and noncommercial use to help *you* the veteran/service-member seek employment (see [License](#license)). The services it uses:
 
 | Service | Needed? | Cost |
 |---|---|---|
