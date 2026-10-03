@@ -212,7 +212,8 @@ class Readers(unittest.TestCase):
             "UserArea": {"Details": {"LowGrade": grade, "HighGrade": grade, "JobSummary": "Lead IT.", "MajorDuties": ["Plan"],
                                      "RemoteIndicator": remote}}}}
         data = {"SearchResult": {"SearchResultItems": [item("1", "Supervisory IT Specialist", "15"), item("2", "IT Specialist", "12"),
-                                                       item("3", "Director", "00", "ES")], "UserArea": {"NumberOfPages": "1"}}}
+                                                       item("3", "Director", "00", "ES"),
+                                                       item("4", "Physician (Telehealth Medical Officer)", "15")], "UserArea": {"NumberOfPages": "1"}}}
         fake = Fake({"data.usajobs.gov": data})
         old = sources.http
         sources.http = fake
@@ -222,6 +223,25 @@ class Readers(unittest.TestCase):
             sources.http = old
         self.assertEqual(sorted(r["title"] for r in rows), ["Director (ES-00)", "Supervisory IT Specialist (GS-15)"], st)
         self.assertIn("LocationName=Melbourne%2C+Florida", fake.calls[0][0])
+
+    def test_usajobs_needs_home_town(self):
+        fake = Fake({"data.usajobs.gov": {"SearchResult": {"SearchResultItems": [], "UserArea": {"NumberOfPages": "1"}}}})
+        old = sources.http
+        sources.http = fake
+        try:
+            rows, st = sources.read_usajobs({"usajobs_api_key": "k", "usajobs_email": "a@b.c"}, sources.Context({}, {"home_location": ""}))
+        finally:
+            sources.http = old
+        self.assertFalse(any("LocationName" in u for u, _ in fake.calls))   # never a nationwide "near home" search
+        self.assertIn("home town", st.get("note", ""))
+
+    def test_home_city_formats(self):
+        c = sources.Context({}, {})
+        for raw, want in [("123 Main St, Springfield, IL 62701", "Springfield, IL"), ("Melbourne, Florida", "Melbourne, FL"),
+                          ("Melbourne FL 32940", "Melbourne, FL"), ("Salt Lake City UT", "Salt Lake City, UT"),
+                          ("Charleston West Virginia", "Charleston, WV"), ("Palm Bay, Florida 32905, USA", "Palm Bay, FL"),
+                          ("Cape Canaveral", "")]:
+            self.assertEqual(c._home_city(raw), want, raw)
 
 
 class JSearch(unittest.TestCase):

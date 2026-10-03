@@ -61,6 +61,7 @@ assistant
 coordinator
 technician
 art director|creative director|medical director|nursing|pharmacy
+physician|medical officer|\bnurse\b|dentist|pharmacist|veterinar|psychologist|chaplain|attorney|\blaw clerk
 director of (sales|business development) - (retail|consumer)"""
 
 DEFAULT_PLACES = ""  # filled per user ("Suggest towns" on the Search page, or typed in)
@@ -294,13 +295,29 @@ class Context:
         self.log = []
 
     def _home_city(self, loc):
-        """'123 Main St, Springfield, IL 62701' -> 'Springfield, IL'."""
+        """'123 Main St, Springfield, IL 62701' / 'Springfield, Illinois' / 'Springfield IL 62701' -> 'Springfield, IL'."""
+        loc = re.sub(r"\s+", " ", str(loc or "")).strip()
+        loc = re.sub(r",?\s*(USA|United States( of America)?|US)\.?$", "", loc, flags=re.I).strip()
+        names = {v.lower(): k for k, v in STATES.items()}
         parts = [p.strip() for p in loc.split(",") if p.strip()]
         if len(parts) >= 2:
-            st = re.match(r"([A-Za-z]{2})\b", parts[-1])
-            if st:
-                return f"{parts[-2]}, {st.group(1).upper()}"
+            last = re.sub(r"\s*\d{5}(-\d{4})?$", "", parts[-1]).strip()
+            ab = last.upper() if last.upper() in STATES else names.get(last.lower())
+            if ab:
+                return f"{parts[-2]}, {ab}"
+        words = re.sub(r"\s*\d{5}(-\d{4})?$", "", parts[-1] if parts else "").split()
+        for n in (3, 2, 1):   # "Salt Lake City UT", "Melbourne Florida", "Charleston West Virginia"
+            if len(words) > n:
+                tail = " ".join(words[-n:])
+                ab = tail.upper() if n == 1 and tail.upper() in STATES else names.get(tail.lower())
+                if ab:
+                    return f"{' '.join(words[:-n])}, {ab}"
         return ""
+
+    def title_allowed(self, title):
+        """Not excluded (skip list or internal-only) — used where something else stands in for a title match."""
+        t = _norm(title)
+        return not INTERNAL_ONLY.search(t) and not any(r.search(t) for r in self.exclude)
 
     def title_ok(self, title):
         if INTERNAL_ONLY.search(_norm(title)):
@@ -835,8 +852,10 @@ def read_usajobs(cfg, ctx):
     city, _, stab = ctx.home_city.partition(",")
     loc_name = f"{city.strip()}, {STATES.get(stab.strip().upper(), stab.strip()).title()}"
     queries = []
-    if ctx.allow_local:
+    if ctx.allow_local and city.strip() and stab.strip():
         queries.append({"LocationName": loc_name, "Radius": ctx.radius})
+    elif ctx.allow_local:
+        st["note"] = "Near-home search skipped: add your home town (e.g. \"Springfield, IL\") on the Profile page."
     if ctx.allow_remote:
         queries.append({"RemoteIndicator": "True"})
     hdr = {"Host": "data.usajobs.gov", "User-Agent": email, "Authorization-Key": key}
@@ -863,8 +882,14 @@ def read_usajobs(cfg, ctx):
                         low = int(det.get("LowGrade") or 0)
                     except ValueError:
                         low = 0
+                    title = d.get("PositionTitle") or ""
                     senior = plan in ("ES", "SL", "ST", "EX") or (plan in ("GS", "GG", "GM") and low >= min_grade)
-                    if not senior and not (ctx.title_ok(d.get("PositionTitle")) and low >= min_grade - 1):
+                    # Federal titles rarely say "Director", so a senior grade can stand in for a title match,
+                    # but the "skip titles" list (and internal-only) still applies to everything.
+                    if senior:
+                        if not ctx.title_allowed(title):
+                            continue
+                    elif not (ctx.title_ok(title) and low >= min_grade - 1):
                         continue
                     st["title_matches"] += 1
                     remote = str(det.get("RemoteIndicator")).lower() == "true" or "RemoteIndicator" in q
