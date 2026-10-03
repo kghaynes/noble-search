@@ -127,6 +127,14 @@ details.qs summary{cursor:pointer;margin:4px 0}
 details.howto{margin:4px 0 10px;font-size:13px}details.howto summary{cursor:pointer;color:var(--accent,#2b59c3);font-weight:600}
 details.howto ol{margin:6px 0 0;padding-left:20px;line-height:1.55}details.howto a{color:var(--accent,#2b59c3)}
 details.howto code{font-size:12px;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+.prog{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:12px;padding:14px 16px;margin:12px 0}
+.prog .ph{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.prog .ph b{font-size:15px}
+.prog .bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin:10px 0 6px}
+.prog .bar i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .6s}
+.prog .steps{display:flex;gap:16px;font-size:12.5px;color:var(--muted);margin-top:8px;flex-wrap:wrap}
+.prog .steps .on{color:var(--ink);font-weight:700}.prog .steps .ok{color:var(--ok,#0f7b4a)}
+.warnbox{background:#fff7e6;border:1px solid #f3dca6;border-radius:12px;padding:12px 16px;margin:12px 0;color:#5a3d00;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+@media (prefers-color-scheme: dark){.warnbox{background:#33290f;border-color:#5c4a1a;color:#f3e3b8}}
 .setupbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:var(--accent-soft,#e8eeff);border:1px solid var(--accent);border-radius:10px;padding:9px 14px;margin:12px 0 0;font-size:14px}
 .setupbar .btn{font-weight:700}
 .setup{background:var(--panel);border:1px solid var(--accent);border-radius:12px;padding:14px 16px;margin:12px 0}
@@ -224,7 +232,7 @@ function closingSoon(j){
 
 async function load(){
   const r = await fetch('/jobs/list'); const d = await r.json();
-  S.jobs = d.jobs; S.counts = d.draft_counts || {}; S.fitState = d.fit; S.setup = d.setup; renderSync(d.sync, d.search); render();
+  S.jobs = d.jobs; S.counts = d.draft_counts || {}; S.fitState = d.fit; S.setup = d.setup; S.progress = d.progress; renderSync(d.sync, d.search); render();
 }
 function renderSync(s, q){
   const el = $('#sync'), parts = [];
@@ -239,7 +247,7 @@ function renderSync(s, q){
     + (q && q.status && q.status.running ? ' <button class="linkbtn" data-act="q_stop">Stop search</button>' : '');
   S.searching = !!(q && q.status && q.status.running);
   clearTimeout(S.syncPoll);
-  if(((q && q.status && q.status.running) || (f && f.running)) && S.view==='jobs') S.syncPoll = setTimeout(load, 15000);
+  if(((q && q.status && q.status.running) || (f && f.running)) && S.view==='jobs') S.syncPoll = setTimeout(load, 10000);
 }
 function filterState(){
   return {q:$('#q').value.trim().toLowerCase(), fit:$('#fit').value, where:$('#where').value, onlyNew:$('#onlyNew').checked};
@@ -279,14 +287,38 @@ function render(){
   const tabAll = S.jobs.filter(TABS.find(t=>t[0]===S.tab)[2]).length;
   const hidden = tabAll - a.length;
   const banner = on && hidden > 0 ? `<div class="fbar">Filters are hiding ${hidden} job${hidden>1?'s':''} in this tab. <button class="linkbtn" id="btnClear">Clear filters</button></div>` : '';
-  $('#list').innerHTML = setupHTML() + banner + (a.length ? a.map(card).join('') :
+  $('#list').innerHTML = progressHTML(S.progress) + warningsHTML(S.progress) + setupHTML() + banner + (a.length ? a.map(card).join('') :
     `<div class="empty">${!S.jobs.length ? emptyJobs() : S.tab==='watch' && tabAll===0 ? 'Nothing on your watchlist yet. Click ★ Interested on any job to keep it here permanently.' : 'No jobs match these filters.'}</div>`);
   const cb = document.getElementById('btnClear'); if(cb) cb.onclick = clearFilters;
   const hs = document.getElementById('btnHideSetup'); if(hs) hs.onclick = () => { try{ localStorage.setItem('ns_hide_setup','1'); }catch{} render(); };
 }
+function mins(s){ s = Math.max(0, s|0); if(s < 90) return 'about a minute'; const m = Math.round(s/60); return m < 60 ? `about ${m} minutes` : `about ${Math.floor(m/60)} h ${m%60} min`; }
+function progressHTML(p){
+  if(!p || !p.phase) return '';
+  const scan = p.phase === 'scan';
+  const pct = scan ? Math.min(98, Math.round(100 * (p.step - 1) / Math.max(p.steps, 1)))
+                   : Math.min(99, Math.round(100 * p.done / Math.max(p.total, 1)));
+  const now = scan ? `Checking <b>${esc(p.current||'')}</b> — source ${p.step} of ${p.steps}`
+                   : `Rating <b>${p.done}</b> of <b>${p.total}</b> new jobs against your Profile${p.current?` — ${esc(p.current)}`:''}`;
+  return `<section class="prog" role="status" aria-live="polite">
+    <div class="ph"><span class="spin"></span><b>${scan ? 'Search underway' : 'Rating your new jobs'}</b>
+      <span class="hint">${mins(p.left)} left (estimate)</span><span style="flex:1"></span>
+      ${scan ? '<button class="btn" data-act="q_stop">Stop search</button>' : ''}</div>
+    <div class="bar"><i style="width:${pct}%"></i></div>
+    <div class="hint">${now}.</div>
+    <div class="steps"><span class="${scan?'on':'ok'}">${scan?'1':'✓'} Search sources</span><span class="${scan?'':'on'}">2 Rate fit &amp; gaps</span><span>3 Ready to review</span></div>
+    <div class="hint" style="margin-top:8px">${scan && p.first ? '<b>First searches take longest — often 15–30 minutes or more.</b> ' : ''}It keeps running on the server: you can leave this page or close your browser. New jobs appear here as they're found${scan ? ', then each one is rated with the reason and the gap' : ''}.</div>
+  </section>`;
+}
+function warningsHTML(p){
+  if(!p) return '';
+  let h = '';
+  if(p.fit_off && p.unrated) h += `<div class="warnbox"><span>&#9888;&#65039; <b>Fit rating is turned off</b> — ${p.unrated} job${p.unrated>1?'s are':' is'} not rated, so they have no fit level, reason or gap.</span><span style="flex:1"></span><button class="btn primary" data-act="p_fiton">Turn rating on &amp; rate them</button></div>`;
+  if(p.no_board_searches) h += `<div class="warnbox"><span>&#9888;&#65039; <b>Job boards are set up but have no searches</b>, so LinkedIn, Indeed and the other boards are skipped.</span><span style="flex:1"></span><button class="btn" data-view="search">Add searches (✨ Suggest)</button></div>`;
+  return h;
+}
 function emptyJobs(){
-  if(S.searching) return `<div style="font-size:16px;margin-bottom:10px"><span class="spin"></span> Searching now — jobs appear here as they're found.</div>
-    <button class="btn" data-act="q_stop">Stop search</button>`;
+  if(S.searching) return `<div style="font-size:16px">No jobs yet — they'll appear here as the search finds them.</div>`;
   const ready = S.setup && (S.setup.steps.find(x=>x.id==='search')||{}).done;
   return `<div style="font-size:16px;margin-bottom:12px">No jobs yet.</div>` + (ready
     ? `<button class="btn primary" data-act="j_firstrun" style="font-size:15px;padding:10px 18px">&#128269; Run your first search</button>
@@ -535,6 +567,12 @@ function verHTML(key, d){
 async function onAct(t){
   const a = t.dataset.act, key = t.dataset.k, id = +t.dataset.id;
   try{
+    if(a==='p_fiton'){
+      t.disabled = true;
+      const prov = (S.settings && S.settings.provider === 'ollama') ? 'ollama' : 'anthropic';
+      await api('/search/save', {fit_provider: prov}); await api('/jobs/rate', {});
+      toast('Rating turned on — rating your jobs now'); setTimeout(() => S.view==='search' ? renderSearch(true) : load(), 1500); return;
+    }
     if(a==='j_firstrun'){
       t.disabled = true; await api('/search/run', {}); toast('Search started'); S.searching = true; render(); setTimeout(load, 4000); return;
     }
@@ -823,11 +861,12 @@ async function renderSearch(keep){
       <div class="hint">Runs on this server. Reads each employer's own hiring system, USAJOBS and the job boards, keeps senior roles near home or remote, rates them, and adds them to your Jobs list. Your statuses and notes are never changed. Keys, models and email are on the <button class="linkbtn" data-view="settings">Settings</button> page.</div>
       ${missing.length?`<div class="fbar" style="margin-top:8px">Not set up yet: ${missing.join(', ')}. <button class="linkbtn" data-view="settings">Open Settings</button></div>`:''}
       <div class="row" style="margin:8px 0">
-        ${st.running?`<span class="pill warn"><span class="spin"></span> Running · ${esc(st.current)}</span> <button class="btn" data-act="q_stop">Stop search</button>`:`<button class="btn primary" data-act="q_run">Run now</button>`}
-        ${d.fit.running?`<span class="pill warn"><span class="spin"></span> Rating ${d.fit.done}/${d.fit.total}</span>`:(d.unrated?`<button class="btn" data-act="q_rate">Rate ${d.unrated} unrated job${d.unrated===1?'':'s'}</button>`:'')}
+        ${st.running||d.fit.running ? '' : `<button class="btn primary" data-act="q_run">Run now</button>`}
+        ${!d.fit.running && d.unrated && c.fit_provider!=='off' ? `<button class="btn" data-act="q_rate">Rate ${d.unrated} unrated job${d.unrated===1?'':'s'}</button>`:''}
         <span class="hint">${c.enabled ? (d.next_run?'Next scheduled run: '+fmtTime(d.next_run):'') : 'Schedule is off'}</span>
         ${d.fit.errors?`<span class="hint err">Rating: ${d.fit.errors} failed · ${esc(d.fit.last_error)}</span>`:''}
       </div>
+      ${progressHTML(d.progress)}${warningsHTML(d.progress)}
       ${runTable}
     </section>`;
   // While a search runs, only this section refreshes — so nothing you are typing below gets wiped.

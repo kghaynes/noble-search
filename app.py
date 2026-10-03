@@ -175,6 +175,41 @@ def export_csv():
     return buf.getvalue()
 
 
+def progress():
+    """What is running right now, how far along, and a rough time-left estimate (seconds)."""
+    s, f = search.status(), fit.status()
+    cfg = search.get_config()
+    out = {"phase": "", "unrated": len(fit.pending_keys()), "fit_off": cfg.get("fit_provider") == "off",
+           "no_board_searches": bool(cfg.get("jsearch_key_set")) and not (cfg.get("jsearch_queries") or "").strip()}
+    now = time.time()
+    if s.get("running"):
+        step, steps, t0 = s.get("step") or 0, s.get("steps") or 0, s.get("t0") or now
+        elapsed = now - t0
+        prev = None
+        for r in search.recent_runs(5):
+            if r.get("finished") and r.get("started") and r.get("status") in ("done", "partial"):
+                try:
+                    prev = (datetime.fromisoformat(r["finished"]) - datetime.fromisoformat(r["started"])).total_seconds()
+                except ValueError:
+                    prev = None
+                break
+        if step >= 2:
+            left = elapsed / step * (steps - step)
+        elif prev:
+            left = max(prev - elapsed, 60)
+        else:
+            left = max(steps * 45 - elapsed, 120)
+        out.update(phase="scan", current=s.get("current"), step=step + 1, steps=steps, elapsed=int(elapsed),
+                   left=int(left), first=prev is None)
+    elif f.get("running"):
+        done, total = f.get("done") or 0, f.get("total") or 0
+        elapsed = now - (f.get("started") or now)
+        per = elapsed / done if done else (8 if f.get("provider") == "anthropic" else 45)
+        out.update(phase="rate", done=done, total=total, current=f.get("current"), elapsed=int(elapsed),
+                   left=int(per * max(total - done, 0)))
+    return out
+
+
 def setup_state(has_run):
     """Getting-started checklist shown on the Jobs page until the basics are done."""
     s = ps.get_settings()
@@ -283,6 +318,8 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/", "/index.html"):
             with open(os.path.join(STATIC_DIR, "index.html"), "rb") as f:
                 return self._send(200, f.read(), "text/html; charset=utf-8")
+        if path == "/jobs/progress":
+            return self._json(200, progress())
         if path == "/jobs/setup":
             return self._json(200, setup_state(bool(search.recent_runs(1))))
         if path == "/jobs/list":
@@ -290,7 +327,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"jobs": list_jobs(), "fit": fit.status(), "search": {
                                         "status": search.status(), "last": runs[0] if runs else None},
                                     "draft_counts": drafts.counts_by_job(), "queue": drafts.queue_state(),
-                                    "setup": setup_state(bool(runs))})
+                                    "setup": setup_state(bool(runs)), "progress": progress()})
         qs = parse_qs(urlparse(self.path).query)
         if path == "/profile":
             return self._json(200, {"profile": ps.get_profile(), "resumes": ps.list_resumes(),
@@ -353,7 +390,7 @@ class Handler(BaseHTTPRequestHandler):
                                     "jsearch_monthly": search.jsearch_monthly_estimate(cfg),
                                     "jsearch_publishers": jsearch_publishers(),
                                     "notify": search.notify.status(),
-                                    "readers": sources.READER_LABELS,
+                                    "readers": sources.READER_LABELS, "progress": progress(),
                                     "title_presets": {k: {"label": l, "include": v} for k, (l, v) in sources.TITLE_PRESETS.items()}})
         if path == "/health":
             return self._json(200, {"ok": True})
