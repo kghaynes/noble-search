@@ -634,6 +634,47 @@ function refreshPanel(key){ const el = document.getElementById('dp-'+key); if(el
 const PF = [['full_name','Full name'],['city_state','City, State'],['phone','Phone'],['email','Email'],['linkedin','LinkedIn URL'],['clearance','Clearance (as you want it shown)']];
 const PREF = [['home_location','Home location (for commute radius)'],['radius_miles','Radius (miles)'],['work_modes','Work modes'],['employment_types','Employment types'],
   ['levels','Target levels','ta'],['lanes','Target role lanes','ta'],['target_employers','Target employers','ta'],['notes','Anything else a writer should know','ta']];
+/* ---- military branch & rank pick lists ---- */
+const MIL_BRANCHES = [['U.S. Army','army'],['U.S. Marine Corps','usmc'],['U.S. Navy','navy'],['U.S. Air Force','af'],['U.S. Space Force','sf'],['U.S. Coast Guard','cg'],
+  ['Army National Guard','army'],['Army Reserve','army'],['Air National Guard','af'],['Air Force Reserve','af'],['Navy Reserve','navy'],['Marine Corps Reserve','usmc'],['Coast Guard Reserve','cg'],
+  ['Federal civilian (GS / SES)','civ']];
+const OFF_ARMY = ['Second Lieutenant','First Lieutenant','Captain','Major','Lieutenant Colonel','Colonel','Brigadier General','Major General','Lieutenant General','General'];
+const OFF_NAVY = ['Ensign','Lieutenant (junior grade)','Lieutenant','Lieutenant Commander','Commander','Captain','Rear Admiral (lower half)','Rear Admiral','Vice Admiral','Admiral'];
+const WO = ['Warrant Officer 1','Chief Warrant Officer 2','Chief Warrant Officer 3','Chief Warrant Officer 4','Chief Warrant Officer 5'];
+const RANKS = {
+  army: {E:['Private','Private (PV2)','Private First Class','Specialist / Corporal','Sergeant','Staff Sergeant','Sergeant First Class','Master Sergeant / First Sergeant','Sergeant Major / Command Sergeant Major'], W:WO, O:OFF_ARMY},
+  usmc: {E:['Private','Private First Class','Lance Corporal','Corporal','Sergeant','Staff Sergeant','Gunnery Sergeant','Master Sergeant / First Sergeant','Master Gunnery Sergeant / Sergeant Major'], W:WO, O:OFF_ARMY},
+  navy: {E:['Seaman Recruit','Seaman Apprentice','Seaman','Petty Officer Third Class','Petty Officer Second Class','Petty Officer First Class','Chief Petty Officer','Senior Chief Petty Officer','Master Chief Petty Officer'], W:WO, O:OFF_NAVY},
+  cg:   {E:['Seaman Recruit','Seaman Apprentice','Seaman','Petty Officer Third Class','Petty Officer Second Class','Petty Officer First Class','Chief Petty Officer','Senior Chief Petty Officer','Master Chief Petty Officer'], W:[null].concat(WO.slice(1,4)), O:OFF_NAVY},
+  af:   {E:['Airman Basic','Airman','Airman First Class','Senior Airman','Staff Sergeant','Technical Sergeant','Master Sergeant','Senior Master Sergeant','Chief Master Sergeant'], W:WO, O:OFF_ARMY},
+  sf:   {E:['Specialist 1','Specialist 2','Specialist 3','Specialist 4','Sergeant','Technical Sergeant','Master Sergeant','Senior Master Sergeant','Chief Master Sergeant'], W:[], O:OFF_ARMY},
+};
+const CIV = ['GS-9','GS-10','GS-11','GS-12','GS-13','GS-14','GS-15','Senior Executive Service (SES)','Senior Level / Scientific & Professional (SL/ST)'];
+function branchKey(b){ const r = MIL_BRANCHES.find(x=>x[0]===b); return r ? r[1] : ''; }
+function branchOptions(cur){
+  const known = MIL_BRANCHES.some(x=>x[0]===cur);
+  return `<option value="">Choose…</option>` + MIL_BRANCHES.map(([n])=>`<option ${n===cur?'selected':''}>${esc(n)}</option>`).join('')
+    + (cur && !known ? `<option selected>${esc(cur)}</option>` : '');
+}
+function rankOptions(branch, cur){
+  const k = branchKey(branch), opts = [];
+  if(k==='civ') CIV.forEach(g => opts.push([g, 'Federal civilian']));
+  else if(RANKS[k]){
+    const R = RANKS[k];
+    R.E.forEach((n,i)=> opts.push([`${n} (E-${i+1})`, 'Enlisted']));
+    R.W.forEach((n,i)=> n && opts.push([`${n} (W-${i+1})`, 'Warrant officers']));
+    R.O.forEach((n,i)=> opts.push([`${n} (O-${i+1})`, 'Officers']));
+  }
+  let h = `<option value="">${k ? 'Choose…' : 'Choose a branch first…'}</option>`, grp = '';
+  for(const [v,g] of opts){ if(g!==grp){ h += (grp?'</optgroup>':'') + `<optgroup label="${g}">`; grp = g; } h += `<option ${v===cur?'selected':''}>${esc(v)}</option>`; }
+  if(grp) h += '</optgroup>';
+  if(cur && !opts.some(o=>o[0]===cur)) h += `<option selected>${esc(cur)}</option>`;   // keep anything typed before
+  return h + `<option value="__other">Other — type it…</option>`;
+}
+document.addEventListener('change', e => {
+  if(e.target.id==='milBranch'){ $('#milRank').innerHTML = rankOptions(e.target.value, ''); $('#milRankOther').hidden = true; }
+  if(e.target.id==='milRank'){ const o = $('#milRankOther'); o.hidden = e.target.value !== '__other'; if(!o.hidden) o.focus(); }
+});
 function homeNoteHTML(read){
   return read ? `<span class="hint">Search reads this as <b>${esc(read)}</b>.</span>`
     : `<span class="hint err">Enter your home town as "Town, ST" (e.g. Melbourne, FL) or a full address, then Save — the search needs it to find jobs near you.</span>`;
@@ -672,8 +713,9 @@ async function renderProfile(){
     <section class="box"><h2>Military background</h2>
       <div class="hint">Used to translate your service into civilian job titles, job-board searches and fit ratings. Codes are fine as-is — e.g. <i>25A Signal Officer</i>, <i>AFSC 17D</i>, <i>NEC 742A</i>, <i>Navy 1820 Information Professional</i>, <i>ASI 6R</i>. Leave blank if it doesn't apply.</div>
       <div class="grid2">
-        ${f('mil_branch','Branch (e.g. U.S. Army)')}
-        ${f('mil_rank','Highest rank / pay grade (e.g. Colonel, O-6 · Master Sergeant, E-8)')}
+        <label class="fld">Branch<select data-pf="mil_branch" id="milBranch">${branchOptions(d.profile.mil_branch)}</select></label>
+        <label class="fld">Highest rank / pay grade<select data-pf="mil_rank" id="milRank">${rankOptions(d.profile.mil_branch, d.profile.mil_rank)}</select>
+          <input class="inp" id="milRankOther" placeholder="Type your rank and pay grade, e.g. Colonel (O-6)" style="margin-top:6px" hidden></label>
         ${f('mil_codes','Occupation codes — MOS / AFSC / NEC / rating / designator (one per line, with titles)','ta')}
         ${f('mil_skill_ids','Skill identifiers, special qualifications, key schools (ASI, SQI, SI, certifications)','ta')}
       </div>
@@ -701,6 +743,7 @@ async function uploadResumes(e){
 async function onProfileAct(a, t){
   if(a==='p_save'){
     const p = {}; document.querySelectorAll('[data-pf]').forEach(el => p[el.dataset.pf] = el.value);
+    if(p.mil_rank === '__other') p.mil_rank = ($('#milRankOther') && $('#milRankOther').value.trim()) || '';
     await api('/profile/save', {profile:p}); toast('Profile saved');
     try{ const d = await api('/profile'); const n = $('#homeNote'); if(n) n.innerHTML = homeNoteHTML(d.home_read); }catch{}
   }
