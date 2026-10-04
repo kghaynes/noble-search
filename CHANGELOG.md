@@ -4,6 +4,16 @@ All notable changes are listed here. Versions follow [semantic versioning](https
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-10-04
+Security fixes from GitHub code scanning (10 high alerts). No change to how the search works.
+
+### Security
+- **Resume files stay in their folder.** Every resume upload, delete and lookup now checks that the file path is inside the resumes folder and refuses anything else. File names were already cleaned, so this is a second safeguard.
+- **Exact website matching.** Checks for Greenhouse, ADP and Indeed links now accept only those sites and their subdomains, not look-alike names that merely contain them (e.g. `evilgreenhouse.io`).
+
+### Upgrading
+Run `./scripts/update.sh` (your data and settings are kept).
+
 ## [0.2.0] — 2026-10-04
 Military background and AI title suggestions, plus the fixes and progress feedback from the first fresh-install test (these were prepared as 0.1.2, which was never published).
 
@@ -47,7 +57,8 @@ First public release.
 - Morning email and ntfy push; Draft Library; 30-day retention with a permanent watchlist.
 - Getting-started checklist; ✨ Suggest towns and searches; Claude API by default with optional local Ollama.
 
-[Unreleased]: https://github.com/kghaynes/noble-search/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/kghaynes/noble-search/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/kghaynes/noble-search/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/kghaynes/noble-search/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/kghaynes/noble-search/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/kghaynes/noble-search/releases/tag/v0.1.0
