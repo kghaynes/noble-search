@@ -87,7 +87,7 @@ def board_from_url(u, site_domain=""):
         if site and site.lower() not in ("wday", "job"):
             return f"https://{host}/{site}", "workday"
         return None, None
-    if host.endswith("greenhouse.io"):
+    if host == "greenhouse.io" or host.endswith(".greenhouse.io"):
         t = qs.get("for", [""])[0] or (parts[0] if parts and parts[0] not in ("embed", "v1") else "")
         if not t and len(parts) > 2 and parts[:2] == ["v1", "boards"]:
             t = parts[2]

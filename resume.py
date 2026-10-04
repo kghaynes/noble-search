@@ -2,6 +2,7 @@
 import copy
 import html
 import re
+import urllib.parse
 import urllib.request
 
 from docx import Document
@@ -38,7 +39,8 @@ def fetch_posting(url, timeout=20):
     """Best-effort fetch of a job posting's text. Returns (ok, text, reason)."""
     if not url or not url.startswith("http"):
         return False, "", "No link on this job."
-    if "indeed.com" in url:
+    host = (urllib.parse.urlparse(url).hostname or "").lower()
+    if host == "indeed.com" or host.endswith(".indeed.com"):
         return False, "", "Indeed blocks automated reading. Open the posting, copy the description, and paste it here."
     req = urllib.request.Request(url, headers={
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
