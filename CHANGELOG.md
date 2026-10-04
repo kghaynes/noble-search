@@ -4,7 +4,8 @@ All notable changes are listed here. Versions follow [semantic versioning](https
 
 ## [Unreleased]
 - **Military background on the Profile:** branch and rank / pay grade picked from lists (ranks change with the branch — Army, Marine Corps, Navy, Air Force, Space Force, Coast Guard, Guard/Reserve, federal civilian GS/SES — with "Other — type it"), occupation codes (MOS, AFSC, NEC, rating, designator) and skill identifiers (ASI, SQI, SI). Used by title suggestions, search suggestions and the fit rating.
-- **✨ Suggest titles:** the AI translates your service and career inventory into civilian titles and proposes seniority words, field words and skip words to tick; add them to your lists or replace them, and edit freely.
+- **✨ Suggest titles:** the AI translates your service and your whole career inventory (or, if you have none yet, your uploaded resumes) into civilian titles and proposes seniority words, field words and skip words to tick; add them to your lists or replace them, and edit freely.
+- ✨ Suggest searches also reads the whole career inventory (it was cut at 3,000 characters) and falls back to your resumes.
 - **Field words:** a new optional list — a job's title must contain a seniority word *and* a field word (e.g. "Director" + "Cyber"). Keeps out right-level, wrong-field jobs such as "Director of Nursing". Applies to senior federal jobs too.
 
 ## [0.1.2] — 2026-10-03

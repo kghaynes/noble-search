@@ -66,6 +66,26 @@ class Titles(unittest.TestCase):
         self.assertEqual(r["fields"], [r"\bit\b", "cyber", "network"])
         self.assertEqual(r["skip"], ["sales"])
 
+    def test_full_inventory_and_resume_fallback(self):
+        seen = {}
+        llm.complete = lambda s, system, user, **k: (seen.__setitem__("user", user) or
+                                                     ('{"levels":["director"],"fields":["it"],"skip":[]}', "anthropic", "m"))
+        ps.save_profile({"mil_codes": "25A"})
+        ps.save_inventory("START " + "x" * 9000 + " LATE-ROLE-MARKER")
+        suggest.suggest("titles")
+        self.assertIn("LATE-ROLE-MARKER", seen["user"])          # no longer cut at 3,000 characters
+        ps.save_inventory("")
+        import resume
+        orig = (ps.list_resumes, resume.extract_docx_text)
+        ps.list_resumes = lambda: [{"name": "a.docx", "is_template": False}, {"name": "tpl.docx", "is_template": True}]
+        resume.extract_docx_text = lambda path: "RESUME TEXT for " + os.path.basename(path)
+        try:
+            suggest.suggest("titles")
+        finally:
+            ps.list_resumes, resume.extract_docx_text = orig
+        self.assertIn("RESUME TEXT for tpl.docx", seen["user"])
+        self.assertLess(seen["user"].index("tpl.docx"), seen["user"].index("a.docx"))   # template resume first
+
     def test_field_words_narrow_matches(self):
         import sources
         c = sources.Context({"title_include": "director", "title_fields": "\\bit\\b\ncyber", "title_exclude": ""}, {})

@@ -67,6 +67,30 @@ def _clean_terms(items, limit):
     return out[:limit]
 
 
+INVENTORY_MAX = 20000   # ~5k tokens: the whole inventory for almost everyone
+RESUME_MAX = 12000
+
+
+def _career_text():
+    """The person's career for suggestions: the full career inventory, or — if there is none yet —
+    the text of their uploaded resumes (template resume first)."""
+    inv = ps.get_inventory().strip()
+    if inv:
+        return "Career inventory:\n" + inv[:INVENTORY_MAX] + ("\n[…inventory shortened]" if len(inv) > INVENTORY_MAX else "")
+    try:
+        import resume   # imported here so suggest works even if python-docx is unavailable
+        rs = sorted(ps.list_resumes(), key=lambda r: not r.get("is_template"))
+        texts = []
+        for r in rs[:2]:
+            try:
+                texts.append(f"Resume ({r['name']}):\n" + resume.extract_docx_text(ps.resume_path(r["name"])))
+            except Exception:  # noqa: BLE001 — an unreadable file just isn't used
+                continue
+        return "\n\n".join(texts)[:RESUME_MAX]
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def _profile_text(p, inventory):
     parts = [f"Home: {p.get('home_location') or p.get('city_state') or '(not set)'}",
              f"Radius: {p.get('radius_miles') or 30} miles",
@@ -78,7 +102,7 @@ def _profile_text(p, inventory):
     if mil:
         parts.append("Military background:\n" + mil)
     if inventory:
-        parts.append("Career summary (first part of their inventory):\n" + inventory[:3000])
+        parts.append(inventory)
     return "\n".join(parts)
 
 
@@ -92,10 +116,11 @@ def suggest(what):
             raise ValueError("Enter your home town or address on the Profile page first.")
         system, user = TOWNS_SYSTEM, f"Home location: {home}\nRadius: {p.get('radius_miles') or 30} miles"
     elif what == "titles":
-        if not (ps.military_text(p) or p.get("levels") or p.get("lanes") or ps.get_inventory().strip()):
-            raise ValueError("Fill in your military background, target levels and fields, or your career inventory on the Profile page first.")
+        career = _career_text()
+        if not (ps.military_text(p) or p.get("levels") or p.get("lanes") or career):
+            raise ValueError("Fill in your military background, target levels and fields, or upload a resume / build your career inventory on the Profile page first.")
         try:
-            raw, _prov, model = llm.complete(settings, TITLES_SYSTEM, _profile_text(p, ps.get_inventory()),
+            raw, _prov, model = llm.complete(settings, TITLES_SYSTEM, _profile_text(p, career),
                                              json_mode=True, max_tokens=1500)
             d = llm.parse_json(raw)
         except llm.LLMError as e:
@@ -111,9 +136,10 @@ def suggest(what):
                          "You can still edit every list yourself.")
         return res
     elif what == "searches":
-        if not (p.get("levels") or p.get("lanes") or ps.military_text(p) or ps.get_inventory().strip()):
-            raise ValueError("Fill in target levels and fields, your military background, or your career inventory on the Profile page first.")
-        system, user = SEARCHES_SYSTEM, _profile_text(p, ps.get_inventory())
+        career = _career_text()
+        if not (p.get("levels") or p.get("lanes") or ps.military_text(p) or career):
+            raise ValueError("Fill in target levels and fields, your military background, or upload a resume / build your career inventory on the Profile page first.")
+        system, user = SEARCHES_SYSTEM, _profile_text(p, career)
     else:
         raise ValueError("Unknown suggestion type")
     try:
