@@ -17,7 +17,7 @@ Yes, it's a tough job market. But for recently transitioning veterans who are en
 I care about my fellow soldiers and veterans (airman, marines, sailors, guardians, and coasties too!). So Noble-Search is born out of my personal frustration and a means to give back and serve my community....  "Just imagine if every Colonel took the time, each day, to solve the problem one Soldier faces. Just imagine how great our Army could be." - GEN Richard Cody to a (then) young Major Ken Haynes circa 2006.
 
 <p align="center">
-  <img src="docs/screenshots/tour.gif" alt="Noble Search tour: rated jobs, search sources, employer finder, settings, draft library, phone view, getting started" width="900">
+  <img src="docs/screenshots/tour.gif" alt="Noble Search tour: rated jobs, military background, AI-suggested titles, search sources, progress, employer finder, settings, draft library, phone view, getting started" width="900">
 </p>
 
 Noble Search runs on your own computer. Every weekday morning it:
@@ -81,6 +81,13 @@ Click any picture to see it full size. The jobs shown come from a real daily run
     <td align="center" width="50%"><a href="docs/screenshots/07-mobile-dark.png"><img src="docs/screenshots/07-mobile-dark.png" alt="Phone, dark mode"></a><br><sub>Phone, dark mode</sub></td>
     <td align="center" width="50%"><a href="docs/screenshots/08-getting-started.png"><img src="docs/screenshots/08-getting-started.png" alt="Getting-started checklist"></a><br><sub>Getting-started checklist</sub></td>
   </tr>
+  <tr>
+    <td align="center" width="50%"><a href="docs/screenshots/09-military.png"><img src="docs/screenshots/09-military.png" alt="Military background — branch and rank pick lists, MOS / AFSC / NEC codes"></a><br><sub>Military background — branch and rank pick lists, MOS / AFSC / NEC codes</sub></td>
+    <td align="center" width="50%"><a href="docs/screenshots/10-suggest-titles.png"><img src="docs/screenshots/10-suggest-titles.png" alt="✨ Suggest titles — your service translated into civilian titles and word lists"></a><br><sub>✨ Suggest titles — your service translated into civilian titles and word lists</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="50%"><a href="docs/screenshots/11-progress.png"><img src="docs/screenshots/11-progress.png" alt="Progress box with time left and Stop search"></a><br><sub>Progress box with time left and Stop search</sub></td>
+  </tr>
 </table>
 
 ---
@@ -90,8 +97,8 @@ Click any picture to see it full size. The jobs shown come from a real daily run
 | Page | What you do there |
 |---|---|
 | **Jobs** | Your list of found jobs, in tabs: Inbox, Watchlist, Applied+, Dismissed, All. Mark each job ★ Interested, Applied, Interviewing, Offer or Dismissed, and add notes. Filter by fit, near home or remote, or by text. Export everything to a spreadsheet (CSV). |
-| **Search** | How the daily search behaves: when it runs, which employers to read, which job-board searches to run, which job titles count, and which towns count as "near home". You can also run a search right now. |
-| **Profile** | Tell it about you: contact details, home town and search radius, target levels and fields, your resume (.docx), and a long **career inventory** (every role, budget, headcount and result). Ratings and drafts only use what is here. |
+| **Search** | How the daily search behaves: when it runs, which employers to read, which job-board searches to run, which job titles count (seniority words, field words, skip words — or let ✨ Suggest titles fill them from your service record), and which towns count as "near home". You can run a search right now and stop it at any time. |
+| **Profile** | Tell it about you: contact details, home town and search radius, target levels and fields, your **military background** (branch and rank from pick lists, MOS / AFSC / NEC codes, skill identifiers), your resume (.docx), and a long **career inventory** (every role, budget, headcount and result). Ratings and drafts only use what is here. |
 | **Settings** | Things you set up once: your AI key, job-data keys (USAJOBS, JSearch) and the morning email or phone alert. Each box has step-by-step "How to set this up" instructions with links, and a Test button. |
 | **Draft Library** | Every resume and application draft, grouped by job, with the time left before it is removed, and download and delete buttons. Open it from Settings → Saved drafts. |
 
@@ -229,7 +236,7 @@ Noble Search starts by itself whenever Docker starts. To make it fully automatic
 
 ## First-time setup (about 30 minutes)
 
-The **Jobs** page shows a five-step checklist. Each step links to the right page and is ticked off when it's done.
+The **Jobs** page shows a five-step checklist. Each step links to the right page and is ticked off when it's done. Until setup is finished, a **Back to Getting started** bar at the top of every page names the next step.
 
 ### 1. Add your Claude API key (Settings)
 
@@ -286,7 +293,9 @@ Click **Save search settings**.
 
 Click **Run now** on the Search page.
 
-- The first run reads everything posted in the last 30 days, so it can take 5–15 minutes.
+- The first run reads everything posted in the last 30 days and then rates every match, so it can take 15–30 minutes or more.
+- A **progress box** on the Jobs and Search pages shows the current step (search sources → rate fit & gaps → ready), what it is working on, and an estimate of the time left. You can close the page; it keeps running.
+- Changed your mind? Click **Stop search**. Jobs found so far are kept and rated.
 - Open **▸ the run summary** to see each source: jobs checked, matches, new jobs, and errors.
 - When the search finishes, the new jobs are rated and appear on the **Jobs** page.
 
@@ -418,13 +427,16 @@ The other two sources:
 
 Every job found is then filtered. It is kept only if:
 
-- its title contains one of your seniority words, one of your field words (if you listed any), and none of your "skip" words
+- its title contains one of your **seniority words** (e.g. director, VP, program manager), one of your **field words** if you listed any (e.g. IT, cyber, network, logistics), and none of your **skip words** (e.g. nurse, sales, intern). Senior federal jobs (your minimum GS grade and up, or SES/SL/ST) count as the right level even without a seniority word, but still need a field word and must avoid skip words
+- it isn't an internal-only posting ("current employees only")
 - its location is one of your towns, your home town, or remote (if you accept remote)
 - it was posted within the last 30 days (you can change this)
 
 If the same job is found in several places, it becomes one card that keeps the employer's own link. Your statuses and notes are **never** changed by a search.
 
-After the search, each **new** job is rated once. Jobs that already have a rating keep it unless you click Re-rate.
+After the search, each **new** job is rated once by the AI against your Profile, career inventory and military background: High, Med or Low, a short reason (what the job is, why you fit it) and the gap. Jobs that already have a rating keep it unless you click Re-rate.
+
+If something is set up in a way that stops this working — for example rating is turned off while jobs wait, or job boards have a key but no search lines — a yellow warning on the Jobs page says so, with a one-click fix.
 
 ---
 
@@ -533,7 +545,9 @@ Deleting the folder also deletes your data, so back it up first.
 | Email: "connection unexpectedly closed" | Try port 465 instead of 587. Some networks block one of them. |
 | An employer shows "bot check" or "can't be read" | That site blocks automatic reading. Set it to **Off** in the employer list. Its jobs often still come through JSearch. Noble Search never tries to get around bot checks. |
 | "Fetch from posting" can't read a job | Some sites need a real browser. Copy the posting text and paste it into the box. |
-| Too many or too few jobs found | Adjust the title words, "skip" words and towns on the Search page. Open the run summary to see which source found what. |
+| Too many or too few jobs found | On the Search page, open **What counts as a match** and click **✨ Suggest titles** — or edit the seniority, field and skip words yourself. Too many wrong-field jobs → add field words. Too few → remove some. Open the run summary to see which source found what. |
+| A search is taking too long | Watch the progress box for the time left, or click **Stop search**. Jobs found so far are kept. |
+| USAJOBS finds jobs all over the country | The Profile page shows how your home town is read ("Search reads this as …"). If it says it can't read it, enter it as "Town, ST". |
 | The scheduled search didn't run | The computer was off or asleep. It catches up when it comes back, up to 6 hours late. Make sure Docker starts at login. |
 
 ---
@@ -594,7 +608,7 @@ python3 -m unittest discover -s tests
 | `sources.py` | Readers for each hiring system, plus USAJOBS and JSearch |
 | `discover.py` | "Add an employer by name": finds a company's job list |
 | `fit.py` | Fit rating: High/Med/Low, lane, reason and gaps |
-| `suggest.py` | ✨ Suggest towns and job-board searches |
+| `suggest.py` | ✨ Suggest towns, job-board searches and job titles (from your career and military background) |
 | `notify.py` | Morning email and ntfy push |
 | `llm.py` | Talks to the Claude API or Ollama |
 | `profile_store.py` | Profile, resumes, career inventory, settings |
