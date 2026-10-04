@@ -135,6 +135,9 @@ details.howto code{font-size:12px;background:var(--bg);border:1px solid var(--li
 .prog .steps .on{color:var(--ink);font-weight:700}.prog .steps .ok{color:var(--ok,#0f7b4a)}
 .warnbox{background:#fff7e6;border:1px solid #f3dca6;border-radius:12px;padding:12px 16px;margin:12px 0;color:#5a3d00;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 @media (prefers-color-scheme: dark){.warnbox{background:#33290f;border-color:#5c4a1a;color:#f3e3b8}}
+.sugbox{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:10px 0;background:var(--bg)}
+.sugbox .sg{margin:6px 0}.sugbox ul{margin:4px 0 0;padding-left:18px;font-size:13.5px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.chip{display:inline-flex;gap:5px;align-items:center;border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:13px;background:var(--panel);cursor:pointer}
 .setupbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:var(--accent-soft,#e8eeff);border:1px solid var(--accent);border-radius:10px;padding:9px 14px;margin:12px 0 0;font-size:14px}
 .setupbar .btn{font-weight:700}
 .setup{background:var(--panel);border:1px solid var(--accent);border-radius:12px;padding:14px 16px;margin:12px 0}
@@ -631,6 +634,47 @@ function refreshPanel(key){ const el = document.getElementById('dp-'+key); if(el
 const PF = [['full_name','Full name'],['city_state','City, State'],['phone','Phone'],['email','Email'],['linkedin','LinkedIn URL'],['clearance','Clearance (as you want it shown)']];
 const PREF = [['home_location','Home location (for commute radius)'],['radius_miles','Radius (miles)'],['work_modes','Work modes'],['employment_types','Employment types'],
   ['levels','Target levels','ta'],['lanes','Target role lanes','ta'],['target_employers','Target employers','ta'],['notes','Anything else a writer should know','ta']];
+/* ---- military branch & rank pick lists ---- */
+const MIL_BRANCHES = [['U.S. Army','army'],['U.S. Marine Corps','usmc'],['U.S. Navy','navy'],['U.S. Air Force','af'],['U.S. Space Force','sf'],['U.S. Coast Guard','cg'],
+  ['Army National Guard','army'],['Army Reserve','army'],['Air National Guard','af'],['Air Force Reserve','af'],['Navy Reserve','navy'],['Marine Corps Reserve','usmc'],['Coast Guard Reserve','cg'],
+  ['Federal civilian (GS / SES)','civ']];
+const OFF_ARMY = ['Second Lieutenant','First Lieutenant','Captain','Major','Lieutenant Colonel','Colonel','Brigadier General','Major General','Lieutenant General','General'];
+const OFF_NAVY = ['Ensign','Lieutenant (junior grade)','Lieutenant','Lieutenant Commander','Commander','Captain','Rear Admiral (lower half)','Rear Admiral','Vice Admiral','Admiral'];
+const WO = ['Warrant Officer 1','Chief Warrant Officer 2','Chief Warrant Officer 3','Chief Warrant Officer 4','Chief Warrant Officer 5'];
+const RANKS = {
+  army: {E:['Private','Private (PV2)','Private First Class','Specialist / Corporal','Sergeant','Staff Sergeant','Sergeant First Class','Master Sergeant / First Sergeant','Sergeant Major / Command Sergeant Major'], W:WO, O:OFF_ARMY},
+  usmc: {E:['Private','Private First Class','Lance Corporal','Corporal','Sergeant','Staff Sergeant','Gunnery Sergeant','Master Sergeant / First Sergeant','Master Gunnery Sergeant / Sergeant Major'], W:WO, O:OFF_ARMY},
+  navy: {E:['Seaman Recruit','Seaman Apprentice','Seaman','Petty Officer Third Class','Petty Officer Second Class','Petty Officer First Class','Chief Petty Officer','Senior Chief Petty Officer','Master Chief Petty Officer'], W:WO, O:OFF_NAVY},
+  cg:   {E:['Seaman Recruit','Seaman Apprentice','Seaman','Petty Officer Third Class','Petty Officer Second Class','Petty Officer First Class','Chief Petty Officer','Senior Chief Petty Officer','Master Chief Petty Officer'], W:[null].concat(WO.slice(1,4)), O:OFF_NAVY},
+  af:   {E:['Airman Basic','Airman','Airman First Class','Senior Airman','Staff Sergeant','Technical Sergeant','Master Sergeant','Senior Master Sergeant','Chief Master Sergeant'], W:WO, O:OFF_ARMY},
+  sf:   {E:['Specialist 1','Specialist 2','Specialist 3','Specialist 4','Sergeant','Technical Sergeant','Master Sergeant','Senior Master Sergeant','Chief Master Sergeant'], W:[], O:OFF_ARMY},
+};
+const CIV = ['GS-9','GS-10','GS-11','GS-12','GS-13','GS-14','GS-15','Senior Executive Service (SES)','Senior Level / Scientific & Professional (SL/ST)'];
+function branchKey(b){ const r = MIL_BRANCHES.find(x=>x[0]===b); return r ? r[1] : ''; }
+function branchOptions(cur){
+  const known = MIL_BRANCHES.some(x=>x[0]===cur);
+  return `<option value="">Choose…</option>` + MIL_BRANCHES.map(([n])=>`<option ${n===cur?'selected':''}>${esc(n)}</option>`).join('')
+    + (cur && !known ? `<option selected>${esc(cur)}</option>` : '');
+}
+function rankOptions(branch, cur){
+  const k = branchKey(branch), opts = [];
+  if(k==='civ') CIV.forEach(g => opts.push([g, 'Federal civilian']));
+  else if(RANKS[k]){
+    const R = RANKS[k];
+    R.E.forEach((n,i)=> opts.push([`${n} (E-${i+1})`, 'Enlisted']));
+    R.W.forEach((n,i)=> n && opts.push([`${n} (W-${i+1})`, 'Warrant officers']));
+    R.O.forEach((n,i)=> opts.push([`${n} (O-${i+1})`, 'Officers']));
+  }
+  let h = `<option value="">${k ? 'Choose…' : 'Choose a branch first…'}</option>`, grp = '';
+  for(const [v,g] of opts){ if(g!==grp){ h += (grp?'</optgroup>':'') + `<optgroup label="${g}">`; grp = g; } h += `<option ${v===cur?'selected':''}>${esc(v)}</option>`; }
+  if(grp) h += '</optgroup>';
+  if(cur && !opts.some(o=>o[0]===cur)) h += `<option selected>${esc(cur)}</option>`;   // keep anything typed before
+  return h + `<option value="__other">Other — type it…</option>`;
+}
+document.addEventListener('change', e => {
+  if(e.target.id==='milBranch'){ $('#milRank').innerHTML = rankOptions(e.target.value, ''); $('#milRankOther').hidden = true; }
+  if(e.target.id==='milRank'){ const o = $('#milRankOther'); o.hidden = e.target.value !== '__other'; if(!o.hidden) o.focus(); }
+});
 function homeNoteHTML(read){
   return read ? `<span class="hint">Search reads this as <b>${esc(read)}</b>.</span>`
     : `<span class="hint err">Enter your home town as "Town, ST" (e.g. Melbourne, FL) or a full address, then Save — the search needs it to find jobs near you.</span>`;
@@ -666,6 +710,18 @@ async function renderProfile(){
           ${inv.status==='done'?`<div class="row"><button class="btn sm" data-act="p_useinv">Replace my inventory with this</button><button class="btn sm" data-act="p_appinv">Append to my inventory</button></div><pre>${esc(inv.text)}</pre>`:''}</div>` : ''}
     </section>
 
+    <section class="box"><h2>Military background</h2>
+      <div class="hint">Used to translate your service into civilian job titles, job-board searches and fit ratings. Codes are fine as-is — e.g. <i>25A Signal Officer</i>, <i>AFSC 17D</i>, <i>NEC 742A</i>, <i>Navy 1820 Information Professional</i>, <i>ASI 6R</i>. Leave blank if it doesn't apply.</div>
+      <div class="grid2">
+        <label class="fld">Branch<select data-pf="mil_branch" id="milBranch">${branchOptions(d.profile.mil_branch)}</select></label>
+        <label class="fld">Highest rank / pay grade<select data-pf="mil_rank" id="milRank">${rankOptions(d.profile.mil_branch, d.profile.mil_rank)}</select>
+          <input class="inp" id="milRankOther" placeholder="Type your rank and pay grade, e.g. Colonel (O-6)" style="margin-top:6px" hidden></label>
+        ${f('mil_codes','Occupation codes — MOS / AFSC / NEC / rating / designator (one per line, with titles)','ta')}
+        ${f('mil_skill_ids','Skill identifiers, special qualifications, key schools (ASI, SQI, SI, certifications)','ta')}
+      </div>
+      <div class="row" style="margin-top:12px"><button class="btn primary" data-act="p_save">Save</button>
+        <span class="hint">Then use <b>✨ Suggest titles</b> on the Search page.</span></div></section>
+
     <section class="box"><h2>Search preferences</h2><div class="hint">Home location, radius and work modes drive the daily search (towns near home are listed on the Search page). Levels, lanes and notes guide the resume writer.</div>
       <div class="grid2">${PREF.map(([k,l,t])=>f(k,l,t)).join('')}</div>
       <div class="row" style="margin-top:12px"><button class="btn primary" data-act="p_save">Save</button></div></section>
@@ -687,6 +743,7 @@ async function uploadResumes(e){
 async function onProfileAct(a, t){
   if(a==='p_save'){
     const p = {}; document.querySelectorAll('[data-pf]').forEach(el => p[el.dataset.pf] = el.value);
+    if(p.mil_rank === '__other') p.mil_rank = ($('#milRankOther') && $('#milRankOther').value.trim()) || '';
     await api('/profile/save', {profile:p}); toast('Profile saved');
     try{ const d = await api('/profile'); const n = $('#homeNote'); if(n) n.innerHTML = homeNoteHTML(d.home_read); }catch{}
   }
@@ -931,8 +988,12 @@ chief information security officer remote">${esc(c.jsearch_queries)}</textarea><
       <div class="grid2">
         <label class="fld full">Start from a preset<select id="q_preset" data-act-change="q_preset"><option value="">Choose a level…</option>${Object.entries(d.title_presets||{}).map(([k,p])=>`<option value="${k}">${esc(p.label)}</option>`).join('')}</select>
           <span class="hint">Fills the list below; edit it any way you like. "*" means any title.</span></label>
-        <label class="fld">Title must contain one of (one per line)<textarea id="q_inc" rows="10">${esc(c.title_include)}</textarea></label>
-        <label class="fld">Skip titles containing (one per line)<textarea id="q_exc" rows="10">${esc(c.title_exclude)}</textarea></label>
+        <div class="fld full"><div class="hint">A job is kept when its title has <b>a seniority word</b> <i>and</i> (if you list any) <b>a field word</b>, and <b>no skip word</b>. Your background shapes the fit rating afterwards.</div>
+          <span class="row" style="margin:6px 0 0"><button class="btn" type="button" data-act="q_sugtitles">✨ Suggest titles from my Profile &amp; military background</button><span class="hint" id="sg_titles"></span></span>
+          <div id="sugTitles">${S.sugTitles ? sugTitlesHTML(S.sugTitles) : ''}</div></div>
+        <label class="fld">Seniority words — title must contain one (one per line)<textarea id="q_inc" rows="10">${esc(c.title_include)}</textarea></label>
+        <label class="fld">Field words — title must also contain one (one per line; leave empty for any field)<textarea id="q_fld" rows="10" placeholder="e.g.&#10;information technology&#10;cyber&#10;network&#10;program&#10;operations">${esc(c.title_fields||'')}</textarea></label>
+        <label class="fld full">Skip titles containing (one per line)<textarea id="q_exc" rows="6">${esc(c.title_exclude)}</textarea></label>
         <label class="fld full">Towns that count as near home (one per line, "Town, ST")<textarea id="q_places" rows="6" placeholder="Type or paste towns, one per line, e.g.&#10;Melbourne, FL&#10;Palm Bay, FL&#10;Leave empty to use only your home town from the Profile">${esc(c.local_places)}</textarea></label>
         <div class="fld full" style="margin-top:-6px"><span class="row" style="margin:0 0 4px"><button class="btn" type="button" data-act="q_suggest" data-what="towns">✨ Suggest towns near my home</button><span class="hint" id="sg_towns"></span></span>
           <span class="hint">You can also type or paste your own list. Remote jobs are kept too when your Profile work modes include Remote. Lines are matched as words; advanced users can use regular expressions. Click <b>Save search settings</b> when done.</span></div>
@@ -946,6 +1007,18 @@ function bindRunlog(){ const rl = document.querySelector('#q_daily details.runlo
 function pollSearch(st, d){
   clearTimeout(S.qPoll);
   if(st.running || d.fit.running) S.qPoll = setTimeout(()=>{ if(S.view==='search') renderSearch(true); }, 5000);
+}
+function sugTitlesHTML(r){
+  const group = (key, label, box) => r[key] && r[key].length ? `<div class="sg"><b>${label}</b> <span class="hint">→ ${box}</span>
+      <div class="chips">${r[key].map((x,i)=>`<label class="chip"><input type="checkbox" data-sg="${key}" data-i="${i}" checked> ${esc(x.replace(/\\b/g,''))}</label>`).join('')}</div></div>` : '';
+  return `<div class="sugbox">
+    ${(r.translations||[]).length ? `<div class="sg"><b>How your service translates</b><ul>${r.translations.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div>` : ''}
+    ${(r.example_titles||[]).length ? `<div class="sg"><b>Civilian titles to target</b><div class="hint">${r.example_titles.map(esc).join(' · ')}</div></div>` : ''}
+    ${group('levels','Seniority words','first list')}${group('fields','Field words','second list')}${group('skip','Skip words','skip list')}
+    <div class="row" style="margin-top:8px"><button class="btn primary" type="button" data-act="q_sugadd">Add ticked words to my lists</button>
+      <button class="btn" type="button" data-act="q_sugreplace">Replace my lists with ticked words</button>
+      <button class="linkbtn" type="button" data-act="q_sugclose">Close</button></div>
+    <div class="hint">Nothing is saved until you click <b>Save search settings</b>. You can edit any list by hand afterwards.</div></div>`;
 }
 function findResult(r){
   const steps = `<details class="howto"><summary>What it checked</summary><ol>${r.log.map(x=>`<li>${esc(x)}</li>`).join('')}</ol></details>`;
@@ -969,13 +1042,31 @@ function readBoards(){
 function collectSearch(){
   const days = [...document.querySelectorAll('[data-qday]')].filter(x=>x.checked).map(x=>x.dataset.qday).join(',');
   return {enabled:$('#q_enabled').checked, run_time:$('#q_time').value, days, timezone:$('#q_tz').value, max_age_days:$('#q_age').value,
-    usajobs_min_grade:$('#q_ugrade').value, title_include:$('#q_inc').value, title_exclude:$('#q_exc').value,
+    usajobs_min_grade:$('#q_ugrade').value, title_include:$('#q_inc').value, title_fields:$('#q_fld').value, title_exclude:$('#q_exc').value,
     local_places:$('#q_places').value, boards: readBoards(), jsearch_queries:$('#q_jq').value, jsearch_pages:$('#q_jpages').value, jsearch_skip_sites:$('#q_jskip').value};
 }
 async function onSearchAct(a, t){
   if(a==='q_save'){ await api('/search/save', collectSearch()); toast('Search settings saved'); S.qBoards=null; renderSearch(); }
   if(a==='q_run'){ await api('/search/save', collectSearch()); await api('/search/run', {}); toast('Search started'); S.qBoards=null; renderSearch(true); }
   if(a==='q_one'){ await api('/search/save', collectSearch()); const b = S.qBoards[+t.dataset.i]; await api('/search/run', {only:[b.name]}); toast('Checking '+b.name); S.qBoards=null; renderSearch(true); }
+  if(a==='q_sugtitles'){
+    const out = $('#sg_titles'); t.disabled = true; out.className='hint'; out.innerHTML = '<span class="spin"></span> Reading your Profile and military background…';
+    try{ S.sugTitles = await api('/search/suggest', {what:'titles'}); $('#sugTitles').innerHTML = sugTitlesHTML(S.sugTitles); out.textContent = '✓ ' + S.sugTitles.detail; }
+    catch(e){ out.className='hint err'; out.textContent = '✗ '+(e.message||e);
+      if(/Profile/.test(e.message||'')) out.insertAdjacentHTML('beforeend', ' <button class="linkbtn" data-view="profile">Open Profile</button>'); }
+    finally{ t.disabled = false; }
+    return;
+  }
+  if(a==='q_sugadd' || a==='q_sugreplace'){
+    const pick = key => [...document.querySelectorAll(`[data-sg="${key}"]`)].filter(x=>x.checked).map(x=>S.sugTitles[key][+x.dataset.i]);
+    const put = (id, words) => { const box = $('#'+id);
+      const cur = a==='q_sugadd' ? box.value.split('\n').map(s=>s.trim()).filter(Boolean) : [];
+      box.value = [...new Set([...cur, ...words])].join('\n'); };
+    put('q_inc', pick('levels')); put('q_fld', pick('fields')); put('q_exc', pick('skip'));
+    S.sugTitles = null; $('#sugTitles').innerHTML = ''; $('#sg_titles').textContent = '';
+    toast(a==='q_sugadd' ? 'Added — review the lists, then Save search settings' : 'Lists replaced — review, then Save search settings'); return;
+  }
+  if(a==='q_sugclose'){ S.sugTitles = null; $('#sugTitles').innerHTML = ''; return; }
   if(a==='q_stop'){ await api('/search/stop', {}); toast('Stopping — jobs found so far are kept'); if(S.view==='search') renderSearch(true); else setTimeout(load, 1500); return; }
   if(a==='q_rate'){ await api('/jobs/rate', {}); toast('Rating started'); renderSearch(true); }
   if(a==='q_find'){

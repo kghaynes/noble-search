@@ -32,6 +32,7 @@ DEFAULTS = {
     "max_age_days": int(os.environ.get("MAX_AGE_DAYS", "30")),
     "title_include": sources.DEFAULT_TITLE_INCLUDE,
     "title_exclude": sources.DEFAULT_TITLE_EXCLUDE,
+    "title_fields": "",
     "local_places": sources.DEFAULT_PLACES,
     "boards": sources.DEFAULT_BOARDS,
     "usajobs_api_key": "",

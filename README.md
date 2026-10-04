@@ -245,6 +245,7 @@ On the **Profile** page, fill in these fields, then click **Save**:
 - **Target levels.** For example "Director, Senior Director, VP" or "Program Manager, Senior Manager".
 - **Target fields.** For example "IT, cybersecurity, operations, space".
 - **Notes.** Anything the writer should know, for example "Prefer 'led' over 'commanded'" or "Never mention X".
+- **Military background.** Branch, highest rank or pay grade, occupation codes (MOS, AFSC, NEC, rating or designator, with their titles) and skill identifiers (ASI, SQI, SI, key schools). Codes are fine as-is, e.g. "25A Signal Officer" or "AFSC 17D". These are translated into civilian titles and used in the fit rating.
 
 ### 3. Upload your resume and build your career inventory (Profile)
 
@@ -275,7 +276,7 @@ Use any mix of these three sources:
 
 Also on the Search page:
 
-- **What counts as a match → Start from a preset.** Pick *Executive & senior leadership*, *Manager & senior professional*, or *Any title*. This fills in the title words, which you can then edit.
+- **What counts as a match → ✨ Suggest titles from my Profile & military background.** The AI shows how your service translates (e.g. "25A Signal Officer → IT / network operations leader"), example civilian titles, and three word lists you can tick: **seniority words** (director, VP…), **field words** (IT, cyber, network…) and **skip words**. Add the ticked words to your lists or replace them — and type your own at any time. Or start from a preset (*Executive & senior leadership*, *Manager & senior professional*, *Any title*).
 - **Towns that count as near home.** Click **✨ Suggest towns near my home** to fill in the towns within your radius. If you leave it empty, only your home town counts.
 - **Schedule.** Default: 5:30 AM, Monday to Friday, in your time zone.
 
@@ -417,7 +418,7 @@ The other two sources:
 
 Every job found is then filtered. It is kept only if:
 
-- its title contains one of your title words, and none of your "skip" words
+- its title contains one of your seniority words, one of your field words (if you listed any), and none of your "skip" words
 - its location is one of your towns, your home town, or remote (if you accept remote)
 - it was posted within the last 30 days (you can change this)
 
