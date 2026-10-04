@@ -2,6 +2,7 @@
 import os
 import sys
 import unittest
+import urllib.parse
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import discover  # noqa: E402
@@ -32,7 +33,7 @@ class Discover(unittest.TestCase):
         careers = '<a href="https://acme.wd5.myworkdayjobs.com/en-US/Acme_Careers">Search jobs</a>'
 
         def fake_fetch(url, as_json=False, timeout=10):
-            if url.startswith("https://www.acmerockets.com"):
+            if urllib.parse.urlparse(url).hostname == "www.acmerockets.com":
                 return ("https://www.acmerockets.com/", site) if not url.endswith("/careers") else (url, careers)
             return None, "nope"
 

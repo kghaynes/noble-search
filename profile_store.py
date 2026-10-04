@@ -152,7 +152,12 @@ def list_resumes():
 
 
 def resume_path(name):
-    return os.path.join(RESUME_DIR, safe_name(name))
+    """Full path of a resume inside RESUME_DIR; refuses anything that would land outside it."""
+    root = os.path.realpath(RESUME_DIR)
+    p = os.path.realpath(os.path.join(root, safe_name(name)))
+    if not p.startswith(root + os.sep):
+        raise ValueError("Invalid file name")
+    return p
 
 
 def save_resume_upload(filename, data_b64):
@@ -163,7 +168,7 @@ def save_resume_upload(filename, data_b64):
     if raw[:2] != b"PK":
         raise ValueError("Not a valid .docx file")
     os.makedirs(RESUME_DIR, exist_ok=True)
-    with open(os.path.join(RESUME_DIR, name), "wb") as f:
+    with open(resume_path(name), "wb") as f:
         f.write(raw)
     prof = get_profile()
     if not prof.get("template_resume"):
@@ -191,7 +196,10 @@ def template_path():
     name = get_profile().get("template_resume")
     if not name:
         return None
-    p = os.path.join(RESUME_DIR, name)
+    try:
+        p = resume_path(name)
+    except ValueError:
+        return None
     return p if os.path.exists(p) else None
 
 

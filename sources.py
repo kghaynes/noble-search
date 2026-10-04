@@ -428,7 +428,7 @@ def detect(url):
         tenant = host.split(".")[0]
         site = next((p for p in parts if not re.match(r"^[a-z]{2}-[A-Z]{2}$", p)), "")
         return "workday", {"host": host, "tenant": tenant, "site": site}
-    if "greenhouse.io" in host:
+    if host == "greenhouse.io" or host.endswith(".greenhouse.io"):
         token = qs.get("for", [""])[0] or (parts[0] if parts and parts[0] != "embed" else "")
         return "greenhouse", {"token": token}
     if host == "jobs.lever.co":
@@ -443,7 +443,7 @@ def detect(url):
         # *.eightfold.ai, or an Eightfold site on the employer's own domain (careers?domain=example.com)
         dom = qs.get("domain", [""])[0] or host.split(".")[0] + ".com"
         return "eightfold", {"host": host, "domain": dom}
-    if "adp.com" in host:
+    if host == "adp.com" or host.endswith(".adp.com"):
         return "off", {}
     sm = url if u.path.lower().endswith(".xml") else f"{u.scheme or 'https'}://{u.netloc}/sitemap.xml"
     return "sitemap", {"sitemap": sm, "host": host}

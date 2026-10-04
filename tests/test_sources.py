@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import unittest
+import urllib.parse
 from datetime import date, timedelta
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -271,7 +272,7 @@ class JSearch(unittest.TestCase):
         self.assertEqual(st["requests"], 2)
         self.assertEqual(sorted(r["title"] for r in rows), ["Director of IT", "Director, Secure Area IT"])
         a = next(r for r in rows if r["company"] == "L3Harris Technologies")
-        self.assertTrue(a["link"].startswith("https://careers.l3harris.com"))  # employer link preferred
+        self.assertEqual(urllib.parse.urlparse(a["link"]).hostname, "careers.l3harris.com")  # employer link preferred
         self.assertEqual(a["salary"], "$150,000–$200,000")
         self.assertEqual(a["sources"], "JSearch (LinkedIn)")
         self.assertIn("query=director+it+in+Melbourne%2C+FL", fake.calls[0][0])
