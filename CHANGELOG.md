@@ -3,21 +3,15 @@
 All notable changes are listed here. Versions follow [semantic versioning](https://semver.org/): 0.x.y while the project is young.
 
 ## [Unreleased]
+
+## [0.2.0] — 2026-10-04
+Military background and AI title suggestions, plus the fixes and progress feedback from the first fresh-install test (these were prepared as 0.1.2, which was never published).
+
+### Added
 - **Military background on the Profile:** branch and rank / pay grade picked from lists (ranks change with the branch — Army, Marine Corps, Navy, Air Force, Space Force, Coast Guard, Guard/Reserve, federal civilian GS/SES — with "Other — type it"), occupation codes (MOS, AFSC, NEC, rating, designator) and skill identifiers (ASI, SQI, SI). Used by title suggestions, search suggestions and the fit rating.
 - **✨ Suggest titles:** the AI translates your service and your whole career inventory (or, if you have none yet, your uploaded resumes) into civilian titles and proposes seniority words, field words and skip words to tick; add them to your lists or replace them, and edit freely.
 - ✨ Suggest searches also reads the whole career inventory (it was cut at 3,000 characters) and falls back to your resumes.
 - **Field words:** a new optional list — a job's title must contain a seniority word *and* a field word (e.g. "Director" + "Cyber"). Keeps out right-level, wrong-field jobs such as "Director of Nursing". Applies to senior federal jobs too.
-
-## [0.1.2] — 2026-10-03
-Fixes from the first fresh-install test, plus clearer feedback while a search runs.
-
-### Fixed
-- **USAJOBS searched the whole country.** If the Profile's home town couldn't be read (for example "Melbourne, Florida" or an address without commas), the "near home" federal search ran nationwide and kept hundreds of jobs. Home towns are now read in many more formats, and the near-home search is skipped — with a note in the run summary — until a home town is set.
-- **Off-target senior federal jobs.** GS-14+ and SES jobs bypassed the "skip titles" list, so physician and similar jobs got through. The skip list now applies to them, and physician, medical officer, nurse, dentist, pharmacist, veterinarian, psychologist, chaplain, attorney and law clerk are on the default skip list.
-- **Typing wiped during a search.** While a search ran, the Search page refreshed every 5 seconds and erased anything typed or pasted (towns, searches) and the ✨ Suggest result. Now only the "Daily search" box refreshes.
-- **"Fill in your Profile" stayed unchecked** with no explanation. It now says exactly what is missing (your name, or a home town the search can read), and accepts the home town from either Home location or City, State.
-
-### Added
 - **Progress box** on the Jobs and Search pages while a search or rating runs: the current step (search sources → rate fit & gaps → ready), the source or job being worked on, a progress bar, an estimated time left, and a reminder that it keeps running if you close the page. First searches are flagged as the slow one (15–30+ minutes).
 - **Stop search** button (progress box, Search page and Jobs header). Jobs found so far are kept and rated; no summary email is sent for a stopped run.
 - **Warnings with one-click fixes:** fit rating turned off while jobs wait to be rated ("Turn rating on & rate them"), and job boards with a key but no searches ("Add searches").
@@ -25,6 +19,12 @@ Fixes from the first fresh-install test, plus clearer feedback while a search ru
 - **Back to Getting started** bar on every page until setup is finished, naming the next step.
 - Profile page shows how the search reads your home town ("Search reads this as Melbourne, FL").
 - The towns box says you can type or paste your own list; a ✨ Suggest error links straight to the Profile page.
+
+### Fixed
+- **USAJOBS searched the whole country.** If the Profile's home town couldn't be read (for example "Melbourne, Florida" or an address without commas), the "near home" federal search ran nationwide and kept hundreds of jobs. Home towns are now read in many more formats, and the near-home search is skipped — with a note in the run summary — until a home town is set.
+- **Off-target senior federal jobs.** GS-14+ and SES jobs bypassed the "skip titles" list, so physician and similar jobs got through. The skip list now applies to them, and physician, medical officer, nurse, dentist, pharmacist, veterinarian, psychologist, chaplain, attorney and law clerk are on the default skip list.
+- **Typing wiped during a search.** While a search ran, the Search page refreshed every 5 seconds and erased anything typed or pasted (towns, searches) and the ✨ Suggest result. Now only the "Daily search" box refreshes.
+- **"Fill in your Profile" stayed unchecked** with no explanation. It now says exactly what is missing (your name, or a home town the search can read), and accepts the home town from either Home location or City, State.
 
 ### Upgrading
 Run `./scripts/update.sh` (your data and settings are kept). If you saved your own "skip titles" list before, it keeps your version — add the new medical/legal entries yourself if you want them.
@@ -47,7 +47,7 @@ First public release.
 - Morning email and ntfy push; Draft Library; 30-day retention with a permanent watchlist.
 - Getting-started checklist; ✨ Suggest towns and searches; Claude API by default with optional local Ollama.
 
-[Unreleased]: https://github.com/kghaynes/noble-search/compare/v0.1.2...HEAD
-[0.1.2]: https://github.com/kghaynes/noble-search/compare/v0.1.1...v0.1.2
+[Unreleased]: https://github.com/kghaynes/noble-search/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/kghaynes/noble-search/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/kghaynes/noble-search/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/kghaynes/noble-search/releases/tag/v0.1.0
