@@ -6,6 +6,7 @@
 [![docker](https://img.shields.io/badge/runs%20on-Docker-2496ED?logo=docker&logoColor=white)](#install)
 [![license: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue)](LICENSE.md)
 [![built for veterans](https://img.shields.io/badge/built%20for-veterans-B22234)](#noble-search)
+[![support on Ko-fi](https://img.shields.io/badge/support-Ko--fi-FF5E5B?logo=kofi&logoColor=white)](#supporting-noble-search)
 
 **A job search tool for transitioning military and veterans.**
 
@@ -57,6 +58,7 @@ Everything is kept on your computer. You bring your own AI key, which costs a fe
 - [Troubleshooting](#troubleshooting)
 - [Advanced](#advanced)
 - [Getting help and contributing](#getting-help-and-contributing)
+- [Supporting Noble Search](#supporting-noble-search)
 - [Disclaimer](#disclaimer)
 - [License](#license)
 
@@ -627,6 +629,23 @@ Besides Python itself, the only library used is `python-docx`.
 - **Security problems:** report privately. See [SECURITY.md](SECURITY.md).
 - **Code and docs:** see [CONTRIBUTING.md](CONTRIBUTING.md). Contributions need the license grant described there.
 - **What changed in each version:** [CHANGELOG.md](CHANGELOG.md)
+
+---
+
+## Supporting Noble Search
+
+Noble Search is free, and it will stay free for veterans and transitioning service members. There are no ads, no paid tier, and your data never leaves your computer.
+
+It is built and maintained by one person on his own time. Tips help pay for the AI and job-board usage needed to build and test new features, and they are a good sign that the work is worth continuing.
+
+If Noble Search helped you, especially if it helped you land a job, you can say thanks here:
+
+- **[GitHub Sponsors](https://github.com/sponsors/kghaynes)**: one-time or monthly. No fees, so all of it goes to the project.
+- **[Ko-fi](https://ko-fi.com/kenhaynes)**: one-time tip by card or PayPal. No GitHub account needed.
+
+Tips are completely optional and are not tax-deductible. Everything in Noble Search works the same whether you tip or not.
+
+Not in a position to tip? Starring the repo, opening issues, and telling another veteran about it helps just as much.
 
 ---
 
