@@ -91,9 +91,12 @@ def job_prompt(job):
 
 def rate_job(settings, provider, system, job):
     last = None
-    for _ in range(2):
-        raw, prov, model = llm.complete(settings, system, job_prompt(job), provider=provider, json_mode=True, max_tokens=400,
-                                       model=settings.get("anthropic_fit_model") or None)
+    for attempt in range(3):
+        # a long reason can run past the reply limit and cut the JSON off: allow more room, and be blunter, on retries
+        prompt = job_prompt(job) + ("" if attempt == 0 else
+                                    "\n\nReply with ONLY the JSON object — no other text. Keep the reason under 45 words.")
+        raw, prov, model = llm.complete(settings, system, prompt, provider=provider, json_mode=True,
+                                        max_tokens=(600, 1000, 1000)[attempt], model=settings.get("anthropic_fit_model") or None)
         try:
             d = llm.parse_json(raw)
         except llm.LLMError as e:

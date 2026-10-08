@@ -63,3 +63,24 @@ class Fit(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Retry(unittest.TestCase):
+    def test_cut_off_reply_gets_more_room_and_a_stricter_prompt(self):
+        import fit, llm
+        calls = []
+
+        def fake(settings, system, user, provider=None, json_mode=True, max_tokens=8000, model=None):
+            calls.append((max_tokens, "ONLY the JSON" in user))
+            if len(calls) < 3:
+                return '{"fit": "High", "lane": "Tech/Cyber", "reason": "Runs enterprise IT for a large', "anthropic", "haiku"
+            return json.dumps({"fit": "High", "lane": "Tech/Cyber", "reason": "Fits. Gap: none."}), "anthropic", "haiku"
+        old = llm.complete
+        llm.complete = fake
+        try:
+            r = fit.rate_job({}, "anthropic", "sys", {"title": "Director of IT", "company": "Acme", "description": "x"})
+        finally:
+            llm.complete = old
+        self.assertEqual(r["fit"], "High")
+        self.assertEqual(calls, [(600, False), (1000, True), (1000, True)])
+
