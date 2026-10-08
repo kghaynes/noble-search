@@ -30,7 +30,7 @@ Rating scale:
 Return ONLY a JSON object:
 {"fit": "High" | "Med" | "Low",
  "lane": one of LANES,
- "reason": "Max 45 words, plain language, three parts in this order. (1) What the job actually is, in a few words (e.g. 'Runs program-health reviews for an aircraft sector'). (2) Why THIS candidate fits THIS job: name the one or two parts of their background that match this posting's main duties, in civilian terms. Do not open with years of experience or repeat the same headline numbers for every job; use a number only when it matches the scale this posting asks for. (3) 'Gap:' and the main gap or risk. Refer to the candidate as 'you'. A higher clearance than required is not a gap; mention clearance only if the posting requires one.",
+ "reason": "Max 45 words, plain language, three parts in this order. (1) What the job actually is, in a few words (e.g. 'Runs program-health reviews for an aircraft sector'). (2) Why THIS candidate fits THIS job: name the one or two parts of their background that match this posting's main duties, in civilian terms. Do not open with years of experience or repeat the same headline numbers for every job; use a number only when it matches the scale this posting asks for. (3) 'Gap:' and the main gap or risk. Refer to the candidate as 'you'. A higher clearance than required is not a gap; mention clearance only if the posting requires one. If the location says relocation is required, include 'relocation required' in the gap.",
  "meets_basic_quals": "yes" | "no" | "unclear"}
 """
 
@@ -91,9 +91,12 @@ def job_prompt(job):
 
 def rate_job(settings, provider, system, job):
     last = None
-    for _ in range(2):
-        raw, prov, model = llm.complete(settings, system, job_prompt(job), provider=provider, json_mode=True, max_tokens=400,
-                                       model=settings.get("anthropic_fit_model") or None)
+    for attempt in range(3):
+        # a long reason can run past the reply limit and cut the JSON off: allow more room, and be blunter, on retries
+        prompt = job_prompt(job) + ("" if attempt == 0 else
+                                    "\n\nReply with ONLY the JSON object — no other text. Keep the reason under 45 words.")
+        raw, prov, model = llm.complete(settings, system, prompt, provider=provider, json_mode=True,
+                                        max_tokens=(600, 1000, 1000)[attempt], model=settings.get("anthropic_fit_model") or None)
         try:
             d = llm.parse_json(raw)
         except llm.LLMError as e:

@@ -25,6 +25,7 @@ import llm
 import profile_store as ps
 import resume
 import discover
+import insight
 import search
 import suggest
 import sources
@@ -131,7 +132,14 @@ def list_jobs():
         rows = [dict(r) for r in conn.execute("SELECT * FROM jobs")]
     for r in rows:
         r["has_description"] = bool(r.pop("description", ""))
+    try:   # same town / home-state rules the search uses, so "Near home" works for any state
+        ctx = sources.Context(search.get_config(), ps.get_profile())
+    except Exception:  # noqa: BLE001
+        ctx = None
     for r in rows:
+        mode = f"{r.get('work_mode') or ''} {r.get('location') or ''}".lower()
+        r["near_home"] = bool(ctx) and "remote" not in mode and "relocation required" not in mode and \
+            ctx.where(r.get("location") or "", loose_remote=False) == "local"
         r["watch"] = r["status"] in WATCH_STATUSES
         r["active"] = is_active(r)
         r["expires"] = expires_on(r)
@@ -180,7 +188,7 @@ def progress():
     s, f = search.status(), fit.status()
     cfg = search.get_config()
     out = {"phase": "", "unrated": len(fit.pending_keys()), "fit_off": cfg.get("fit_provider") == "off",
-           "no_board_searches": bool(cfg.get("jsearch_key_set")) and not (cfg.get("jsearch_queries") or "").strip()}
+           "no_board_searches": bool(cfg.get("jsearch_key_set")) and not (cfg.get("jsearch_what") or cfg.get("jsearch_queries") or "").strip()}
     now = time.time()
     if s.get("running"):
         step, steps, t0 = s.get("step") or 0, s.get("steps") or 0, s.get("t0") or now
@@ -384,7 +392,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.wfile.write(data)
         if path == "/search":
             cfg = search.get_config()
+            plan = search.jsearch_plan(search.get_config(include_secret=True))
             return self._json(200, {"config": cfg, "boards": search.board_list(cfg), "status": search.status(),
+                                    "jsearch_plan": insight._plan_view(plan), "jsearch_report": insight.line_report(),
                                     "runs": search.recent_runs(8), "next_run": search.next_run(cfg),
                                     "fit": fit.status(), "unrated": len(fit.pending_keys()),
                                     "jsearch_monthly": search.jsearch_monthly_estimate(cfg),
@@ -443,6 +453,10 @@ class Handler(BaseHTTPRequestHandler):
             if len(name) < 2:
                 raise ValueError("Type the company's name")
             return discover.discover(name, str(data.get("website") or "").strip(), search.get_config(include_secret=True))
+        if path == "/search/check":
+            return insight.check(data.get("draft") or {})
+        if path == "/search/whynot":
+            return insight.why_not(data)
         if path == "/search/suggest":
             return suggest.suggest(str(data.get("what") or ""))
         if path == "/search/stop":
@@ -511,6 +525,7 @@ def main():
     init_db()
     drafts.init()
     search.init(db, _db_lock)
+    insight.init(db, _db_lock)
     search.notify.init(db, _db_lock)
     fit.init(db, _db_lock)
     threading.Thread(target=housekeeping_loop, daemon=True).start()

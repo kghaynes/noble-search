@@ -4,6 +4,26 @@ All notable changes are listed here. Versions follow [semantic versioning](https
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-10-08
+Smarter, self-explaining search: plain-word matching, job-board searches built from your Profile, a settings check, and "Why didn't I see a job?".
+
+### Added
+- **"Why didn't I see a job?"** (Search page, and **Find out why** under the Jobs list): paste a job's link and/or title and it walks the job through every step — already in your list or dismissed, link (re-posting site?), title rules, location, and whether a recent search came across it — and says where it drops out, with one-click fixes. Each run now keeps a record of every title it checked and why it was kept or dropped (last 5 runs).
+- **Settings check** on Save (or **Check my settings**): warnings about settings that work against each other (a skip word that blocks your own word, a field word already covered by another, no remote or near-home searches, a home town that can't be read), a test of the titles you want (examples from ✨ Suggest titles, your starred and High-fit jobs) against your rules, and how many titles from the last run would pass. One-click fixes.
+- **How each search is doing:** for each job you look for on job boards, what the boards returned, what you kept and what was new over the last runs; searches that find nothing are flagged.
+- **Federal jobs posted nationwide** (USAJOBS): optionally keep senior postings filled "anywhere" (Multiple locations, Location negotiable…), marked **relocation required** — for any agency, or only agencies with offices near you (✨ Suggest agencies).
+
+### Changed
+- **Job-board searches are now "jobs to look for".** List just the job (*director of IT*); the app searches it near home and/or remotely from your Profile work modes. No more `{home}` or "remote" in the lines. Existing search lines are converted automatically; lines naming another place move to **Advanced: exact searches**.
+- **Monthly request limit:** set what your plan allows (200 on the free plan). If there are more searches than fit, they take turns from run to run instead of running out the month early. The page shows exactly what runs.
+- **Plain-word matching** for seniority, field and skip words: any case, whole words only, singular and plural (*program* = *programs*), common endings (*engineer* = *engineering*, *intern* = *internship*) and *cyber…* compounds. Short words like *IT* and *AI* match only as whole words. Lines containing `\ | ( )` are still used as patterns, so existing lists keep working.
+- ✨ Suggest titles now gives plain words, and ✨ Suggest jobs gives job titles only.
+
+### Fixed
+- The Jobs page **Near home** filter only recognized Florida. It now uses your home town and towns list, for any state.
+- **Fit rating: "Model did not return JSON".** A long reason could run past the reply limit and cut the answer off. Rating now allows more room and retries twice, asking for JSON only.
+
+
 ## [0.2.1] — 2026-10-04
 Security fixes from GitHub code scanning (10 high alerts). No change to how the search works.
 
@@ -57,7 +77,8 @@ First public release.
 - Morning email and ntfy push; Draft Library; 30-day retention with a permanent watchlist.
 - Getting-started checklist; ✨ Suggest towns and searches; Claude API by default with optional local Ollama.
 
-[Unreleased]: https://github.com/kghaynes/noble-search/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/kghaynes/noble-search/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/kghaynes/noble-search/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/kghaynes/noble-search/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/kghaynes/noble-search/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/kghaynes/noble-search/compare/v0.1.0...v0.1.1

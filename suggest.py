@@ -8,6 +8,7 @@ import re
 
 import llm
 import profile_store as ps
+import sources
 
 TOWNS_SYSTEM = """You list towns for a job search. Reply with JSON only: {"items": ["Town, ST", ...]}.
 Rules: real incorporated cities, towns and well-known places (including military bases and
@@ -15,14 +16,21 @@ space/industrial centers where jobs are listed) within the given radius of the h
 Use the format "Town, ST" with the two-letter US state code. Include the home town itself.
 Order by size/importance for jobs. 8 to 40 items. No commentary."""
 
-SEARCHES_SYSTEM = """You write job-board search phrases for a job seeker. Reply with JSON only:
+AGENCIES_SYSTEM = """You list U.S. federal employers for a job search. Reply with JSON only: {"items": ["...", ...]}.
+List the federal agencies and military services that have offices, bases, centers or field sites within the given
+radius of the home location (e.g. near Cape Canaveral: "National Aeronautics and Space Administration",
+"Space Force", "Air Force", "Navy"). Use the agency or service name as USAJOBS shows it (department or agency
+name, e.g. "Department of Veterans Affairs", "Army Corps of Engineers", "Federal Aviation Administration").
+One agency per item, most significant employers first, 3 to 20 items. Only agencies that really are present there.
+No commentary."""
+
+SEARCHES_SYSTEM = """You write the job titles a job seeker should search for on job boards. Reply with JSON only:
 {"items": ["...", ...]}.
 Rules:
-- 5 to 7 lines. Each line is one search a recruiter would type into Indeed or LinkedIn, 2-6 words,
-  plain civilian job titles (translate military roles into civilian titles), no quotes, no boolean operators.
-- Most lines end with " in {home}" (keep the literal text {home}; the app replaces it with the person's town).
-- If the person accepts remote work, make 1 or 2 lines end with " remote" instead.
-- Match the person's seniority and fields. Do not repeat near-identical phrases."""
+- 5 to 8 items. Each is what a recruiter would type into Indeed or LinkedIn: 2-6 words, a plain civilian job title
+  (translate military roles into civilian titles), no quotes, no boolean operators.
+- Do NOT add a place or the word "remote": the app adds near-home and remote searches itself.
+- Match the person's seniority and fields. Cover their main fields; do not repeat near-identical titles."""
 
 
 TITLES_SYSTEM = """You are a senior recruiter who places transitioning military members and veterans in civilian jobs.
@@ -51,19 +59,16 @@ Rules:
 
 
 def _clean_terms(items, limit):
-    """Lowercase plain phrases -> safe match lines (short acronyms get word boundaries)."""
+    """Lowercase plain words and phrases, one per item (the matcher handles case, plurals and word edges)."""
     out, seen = [], set()
     parts = [y for x in items or [] for y in re.split(r"[/,;|]", str(x or ""))]
     for x in parts:
         s = re.sub(r"\s+", " ", x.strip().lower())
-        s = re.sub(r"[^a-z0-9 &.'+#-]", "", s).strip()
+        s = re.sub(r"[^a-z0-9 &'+#-]", "", s).strip()   # plain words only: matching handles case, plurals, word edges
         if not s or s in seen:
             continue
         seen.add(s)
-        line = re.escape(s).replace("\\ ", " ")
-        if len(s) <= 4 and " " not in s:
-            line = rf"\b{line}\b"
-        out.append(line)
+        out.append(s)
     return out[:limit]
 
 
@@ -115,6 +120,11 @@ def suggest(what):
         if not home:
             raise ValueError("Enter your home town or address on the Profile page first.")
         system, user = TOWNS_SYSTEM, f"Home location: {home}\nRadius: {p.get('radius_miles') or 30} miles"
+    elif what == "agencies":
+        home = (p.get("home_location") or p.get("city_state") or "").strip()
+        if not home:
+            raise ValueError("Enter your home town or address on the Profile page first.")
+        system, user = AGENCIES_SYSTEM, f"Home location: {home}\nRadius: {p.get('radius_miles') or 30} miles"
     elif what == "titles":
         career = _career_text()
         if not (ps.military_text(p) or p.get("levels") or p.get("lanes") or career):
@@ -151,6 +161,6 @@ def suggest(what):
         raise ValueError("The AI model gave an answer that could not be read. Try again.")
     items = [str(x).strip() for x in items if str(x).strip()][:40]
     if what == "searches":
-        items = [x if ("{home}" in x or "remote" in x.lower()) else f"{x} in {{home}}" for x in items]
+        items = sources.split_search_lines("\n".join(items))[0]   # drop any place or "remote" the model added
     return {"ok": True, "items": items, "text": "\n".join(items),
             "detail": f"{len(items)} suggestions from {model}. Review them, then click Save search settings."}

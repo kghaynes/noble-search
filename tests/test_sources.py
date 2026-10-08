@@ -225,6 +225,69 @@ class Readers(unittest.TestCase):
         self.assertEqual(sorted(r["title"] for r in rows), ["Director (ES-00)", "Supervisory IT Specialist (GS-15)"], st)
         self.assertIn("LocationName=Melbourne%2C+Florida", fake.calls[0][0])
 
+    def _nationwide_run(self, cfg_extra):
+        def item(pid, title, org, locs, plan="ES", grade="00", dept=""):
+            return {"MatchedObjectDescriptor": {
+                "PositionID": pid, "PositionTitle": title, "PositionURI": f"https://www.usajobs.gov/job/{pid}",
+                "OrganizationName": org, "DepartmentName": dept, "PositionLocationDisplay": locs[0] if len(locs) == 1 else "Multiple Locations",
+                "PositionLocation": [{"LocationName": x} for x in locs],
+                "PositionRemuneration": [{"MinimumRange": "217333", "MaximumRange": "223379"}], "PublicationStartDate": D(3),
+                "ApplicationCloseDate": D(-10), "JobGrade": [{"Code": plan}],
+                "UserArea": {"Details": {"LowGrade": grade, "HighGrade": grade, "JobSummary": "Lead IT.", "MajorDuties": [],
+                                         "RemoteIndicator": False}}}}
+        empty = {"SearchResult": {"SearchResultItems": [], "UserArea": {"NumberOfPages": "1"}}}
+        nat = {"SearchResult": {"SearchResultItems": [
+            item("887470100", "Deputy Chief Information Officer", "Headquarters, NASA", ["NASA - United States Locations"],
+                 dept="National Aeronautics and Space Administration"),
+            item("2", "Chief Information Officer", "Veterans Health Administration", ["Location Negotiable After Selection, United States"],
+                 dept="Department of Veterans Affairs"),
+            item("3", "Director, IT Operations", "Defense Logistics Agency", ["Fort Belvoir, Virginia"], dept="Department of Defense"),
+            item("4", "IT Specialist", "Veterans Health Administration", ["Anywhere in the U.S. (relocation)"], plan="GS", grade="09"),
+        ], "UserArea": {"NumberOfPages": "1"}}}
+        fake = Fake({"PayGradeLow=": nat, "data.usajobs.gov": empty})
+        old = sources.http
+        sources.http = fake
+        try:
+            rows, st = sources.read_usajobs({"usajobs_api_key": "k", "usajobs_email": "a@b.c", **cfg_extra}, ctx())
+        finally:
+            sources.http = old
+        return rows, st, fake
+
+    def test_usajobs_nationwide_off_by_default(self):
+        rows, st, fake = self._nationwide_run({})
+        self.assertFalse(any("PayGradeLow" in u for u, _ in fake.calls))
+        self.assertEqual(rows, [])
+
+    def test_usajobs_nationwide_all(self):
+        rows, st, fake = self._nationwide_run({"usajobs_nationwide": "all"})
+        titles = sorted(r["title"] for r in rows)
+        # Fort Belvoir is one named far-away site -> not nationwide; GS-9 -> below the grade floor
+        self.assertEqual(titles, ["Chief Information Officer (ES-00)", "Deputy Chief Information Officer (ES-00)"], st)
+        nasa = next(r for r in rows if "Deputy" in r["title"])
+        self.assertIn("relocation required", nasa["location"])
+        self.assertEqual(nasa["work_mode"], "On-site — relocation required")
+        self.assertTrue(nasa["description"].startswith("Location: NASA - United States Locations — nationwide posting"))
+        self.assertIn("PayGradeLow=13", next(u for u, _ in fake.calls if "PayGradeLow" in u))
+        self.assertNotIn("_nationwide", " ".join(u for u, _ in fake.calls))
+        self.assertIn("2 nationwide posting(s) kept", st["note"])
+
+    def test_usajobs_nationwide_agencies(self):
+        rows, st, _ = self._nationwide_run({"usajobs_nationwide": "agencies", "usajobs_agencies": "NASA\nSpace Force"})
+        self.assertEqual([r["title"] for r in rows], ["Deputy Chief Information Officer (ES-00)"])
+        rows, st, fake = self._nationwide_run({"usajobs_nationwide": "agencies", "usajobs_agencies": ""})
+        self.assertEqual(rows, [])
+        self.assertIn("list the agencies", st["note"])
+        self.assertFalse(any("PayGradeLow" in u for u, _ in fake.calls))
+
+    def test_is_nationwide(self):
+        yes = [["NASA - United States Locations"], ["Multiple Locations"], ["Location Negotiable After Selection, United States"],
+               ["United States"], ["Anywhere in the U.S. (remote job)"], [f"Town {i}, Texas" for i in range(5)]]
+        no = [["Fort Belvoir, Virginia"], ["Washington, District of Columbia", "Arlington, Virginia"], [""]]
+        for x in yes:
+            self.assertTrue(sources.is_nationwide(x), x)
+        for x in no:
+            self.assertFalse(sources.is_nationwide(x), x)
+
     def test_usajobs_needs_home_town(self):
         fake = Fake({"data.usajobs.gov": {"SearchResult": {"SearchResultItems": [], "UserArea": {"NumberOfPages": "1"}}}})
         old = sources.http

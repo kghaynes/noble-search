@@ -24,11 +24,11 @@ class Suggest(unittest.TestCase):
         with self.assertRaises(ValueError):
             suggest.suggest("towns")
 
-    def test_searches_adds_home(self):
+    def test_searches_are_plain_jobs(self):
         ps.save_profile({"levels": "Director, VP", "lanes": "IT, cyber"})
         llm.complete = lambda *a, **k: (json.dumps({"items": ["director of it", "ciso remote", "vp operations in {home}"]}), "anthropic", "m")
         r = suggest.suggest("searches")
-        self.assertEqual(r["items"], ["director of it in {home}", "ciso remote", "vp operations in {home}"])
+        self.assertEqual(r["items"], ["director of it", "ciso", "vp operations"])   # places/remote are added by the app
 
     def test_towns(self):
         ps.save_profile({"home_location": "Springfield, IL", "radius_miles": 25})
@@ -63,7 +63,7 @@ class Titles(unittest.TestCase):
         r = suggest.suggest("titles")
         self.assertIn("25A Signal Officer", seen["user"]); self.assertIn("MOS", seen["system"])
         self.assertEqual(r["levels"], ["director", "head of"])
-        self.assertEqual(r["fields"], [r"\bit\b", "cyber", "network"])
+        self.assertEqual(r["fields"], ["it", "cyber", "network"])   # plain words; matcher handles word edges
         self.assertEqual(r["skip"], ["sales"])
 
     def test_full_inventory_and_resume_fallback(self):
@@ -164,3 +164,23 @@ class ClaudeRequest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NearHome(unittest.TestCase):
+    def test_any_state(self):
+        import search
+        from datetime import date
+        app.init_db(); search.init(app.db, app._db_lock)
+        ps.save_profile({"home_location": "Austin, TX", "work_modes": "On-site, Hybrid, Remote"})
+        search.save_config({"local_places": "Austin, TX\nRound Rock, TX"})
+        today = date.today().isoformat()
+        rows = [("a|1", "Round Rock, TX", "On-site"), ("a|2", "Melbourne, FL", "On-site"),
+                ("a|3", "Remote (US)", "Remote"), ("a|4", "Nationwide — relocation required (Multiple Locations)",
+                                                  "On-site — relocation required")]
+        with app._db_lock, app.db() as conn:
+            for k, loc, mode in rows:
+                conn.execute("INSERT OR REPLACE INTO jobs (job_key, title, company, location, work_mode, posted_date, "
+                             "first_seen, last_seen, status) VALUES (?,?,?,?,?,?,?,?,'')", (k, "Director", "Co", loc, mode, today, today, today))
+        got = {r["job_key"]: r["near_home"] for r in app.list_jobs() if r["job_key"].startswith("a|")}
+        self.assertEqual(got, {"a|1": True, "a|2": False, "a|3": False, "a|4": False})
+

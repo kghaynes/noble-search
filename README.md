@@ -99,7 +99,7 @@ Click any picture to see it full size. The jobs shown come from a real daily run
 | Page | What you do there |
 |---|---|
 | **Jobs** | Your list of found jobs, in tabs: Inbox, Watchlist, Applied+, Dismissed, All. Mark each job ★ Interested, Applied, Interviewing, Offer or Dismissed, and add notes. Filter by fit, near home or remote, or by text. Export everything to a spreadsheet (CSV). |
-| **Search** | How the daily search behaves: when it runs, which employers to read, which job-board searches to run, which job titles count (seniority words, field words, skip words — or let ✨ Suggest titles fill them from your service record), and which towns count as "near home". You can run a search right now and stop it at any time. |
+| **Search** | How the daily search behaves: when it runs, which employers to read, which jobs to look for on job boards, which job titles count (seniority words, field words, skip words — or let ✨ Suggest titles fill them from your service record), and which towns count as "near home". You can run a search right now and stop it at any time, check your settings, and ask **"Why didn't I see a job?"** about any posting. |
 | **Profile** | Tell it about you: contact details, home town and search radius, target levels and fields, your **military background** (branch and rank from pick lists, MOS / AFSC / NEC codes, skill identifiers), your resume (.docx), and a long **career inventory** (every role, budget, headcount and result). Ratings and drafts only use what is here. |
 | **Settings** | Things you set up once: your AI key, job-data keys (USAJOBS, JSearch) and the morning email or phone alert. Each box has step-by-step "How to set this up" instructions with links, and a Test button. |
 | **Draft Library** | Every resume and application draft, grouped by job, with the time left before it is removed, and download and delete buttons. Open it from Settings → Saved drafts. |
@@ -281,11 +281,12 @@ Use any mix of these three sources:
   3. Click **Add to my list**.
   4. If the company isn't found, use **Add employer manually**. The steps are on the page.
 - **USAJOBS** (free key, federal jobs). See [USAJOBS key](#usajobs-key-optional-free).
-- **Job boards through JSearch** (free key). See [JSearch key](#jsearch-key-optional-free-plan). Then, on the Search page, click **✨ Suggest searches from my Profile** to get ready-made search lines, and edit them as you like.
+- **Job boards through JSearch** (free key). See [JSearch key](#jsearch-key-optional-free-plan). Then, on the Search page, list the **jobs to look for**, just the job, like *director of IT* (or click **✨ Suggest jobs from my Profile**). You don't type a town or "remote": the app searches each job near home and/or remotely, following your Profile work modes, and fits the searches into your plan's monthly request limit. If there are more than fit, they take turns.
 
 Also on the Search page:
 
-- **What counts as a match → ✨ Suggest titles from my Profile & military background.** The AI shows how your service translates (e.g. "25A Signal Officer → IT / network operations leader"), example civilian titles, and three word lists you can tick: **seniority words** (director, VP…), **field words** (IT, cyber, network…) and **skip words**. Add the ticked words to your lists or replace them — and type your own at any time. Or start from a preset (*Executive & senior leadership*, *Manager & senior professional*, *Any title*).
+- **What counts as a match → ✨ Suggest titles from my Profile & military background.** The AI shows how your service translates (e.g. "25A Signal Officer → IT / network operations leader"), example civilian titles, and three word lists you can tick: **seniority words** (director, VP…), **field words** (IT, cyber, network…) and **skip words**. Add the ticked words to your lists or replace them — and type your own at any time. Or start from a preset (*Executive & senior leadership*, *Manager & senior professional*, *Any title*). Type plain words: capitals, plurals and endings are handled for you (*program* also matches *programs*, *engineer* matches *engineering*), and short words like *IT* or *AI* only match as whole words.
+- **Save search settings** also runs a **settings check**. It warns about settings that work against each other (e.g. a skip word that blocks one of your own words), tests the example titles from ✨ Suggest titles plus your starred and High-fit jobs against your rules, and shows how many titles from the last run would pass. Most warnings have a one-click fix.
 - **Towns that count as near home.** Click **✨ Suggest towns near my home** to fill in the towns within your radius. If you leave it empty, only your home town counts.
 - **Schedule.** Default: 5:30 AM, Monday to Friday, in your time zone.
 
@@ -300,6 +301,7 @@ Click **Run now** on the Search page.
 - Changed your mind? Click **Stop search**. Jobs found so far are kept and rated.
 - Open **▸ the run summary** to see each source: jobs checked, matches, new jobs, and errors.
 - When the search finishes, the new jobs are rated and appear on the **Jobs** page.
+- **Missing a job you expected?** Click **Find out why** at the bottom of the Jobs list, or use **Why didn't I see a job?** at the top of the Search page. Paste the job's link and/or title (and the location if you know it). It checks every step — already in your list or dismissed, the link, the title rules, the location, and whether any recent search came across it — and shows where the job drops out, with one-click fixes (add a field word, count a town as near home, look for the job on job boards, add the employer…).
 
 From then on, it runs by itself on your schedule.
 
@@ -424,8 +426,8 @@ The employer finder tells you when it sees one of these. Jobs from those employe
 
 The other two sources:
 
-- **USAJOBS** is searched near your home town, plus a separate search for remote jobs.
-- **JSearch** runs each of your search lines once per run, for jobs posted in the last month.
+- **USAJOBS** is searched near your home town, plus a separate search for remote jobs. Optionally (Search page → *Federal jobs posted "nationwide"*), senior postings filled "anywhere" — Multiple locations, Location negotiable, "relocate to an assigned site" — are kept too and marked **relocation required**, for any agency or only agencies with offices near you.
+- **JSearch** searches each job you listed near home and/or remotely (following your Profile work modes), for jobs posted in the last month. Each search uses one request. If that's more than your monthly limit allows (200 on the free plan), the searches take turns from run to run. The Search page shows exactly what runs, and **How each search is doing** shows, for each job, what the boards returned, what you kept and what was new over the last runs, so you can replace searches that find nothing.
 
 Every job found is then filtered. It is kept only if:
 
@@ -542,12 +544,13 @@ Deleting the folder also deletes your data, so back it up first.
 | Claude test: "invalid x-api-key" | The key may have been cut off when you pasted it. Copy it again, or create a new key. |
 | Jobs say "Not rated" | Check the Claude key in Settings. On the Search page, click **Rate N unrated jobs**; errors show next to that button. |
 | USAJOBS: "401" or "unauthorized" | The email address must be exactly the one you requested the key with. |
-| JSearch: "429" or "limit reached" | You've used this month's requests. Remove some search lines, or wait for next month. |
+| JSearch: "429" or "limit reached" | You've used this month's requests. Lower **Requests your plan allows per month** on the Search page (the searches then take turns), or wait for next month. |
+| A job you saw elsewhere isn't in your list | Use **Why didn't I see a job?** on the Search page (or **Find out why** under the Jobs list). It shows which step drops the job and offers a fix. |
 | Email: "rejected the login" | Gmail needs an **app password**, not your normal password. See [Gmail app password](#gmail-app-password-optional-for-the-morning-email). |
 | Email: "connection unexpectedly closed" | Try port 465 instead of 587. Some networks block one of them. |
 | An employer shows "bot check" or "can't be read" | That site blocks automatic reading. Set it to **Off** in the employer list. Its jobs often still come through JSearch. Noble Search never tries to get around bot checks. |
 | "Fetch from posting" can't read a job | Some sites need a real browser. Copy the posting text and paste it into the box. |
-| Too many or too few jobs found | On the Search page, open **What counts as a match** and click **✨ Suggest titles** — or edit the seniority, field and skip words yourself. Too many wrong-field jobs → add field words. Too few → remove some. Open the run summary to see which source found what. |
+| Too many or too few jobs found | On the Search page, open **What counts as a match** and click **✨ Suggest titles** — or edit the seniority, field and skip words yourself, then **Save** to see the settings check. Too many wrong-field jobs → add field words. Too few → remove some. Open the run summary to see which source found what. |
 | A search is taking too long | Watch the progress box for the time left, or click **Stop search**. Jobs found so far are kept. |
 | USAJOBS finds jobs all over the country | The Profile page shows how your home town is read ("Search reads this as …"). If it says it can't read it, enter it as "Town, ST". |
 | The scheduled search didn't run | The computer was off or asleep. It catches up when it comes back, up to 6 hours late. Make sure Docker starts at login. |
@@ -610,6 +613,7 @@ python3 -m unittest discover -s tests
 | `sources.py` | Readers for each hiring system, plus USAJOBS and JSearch |
 | `discover.py` | "Add an employer by name": finds a company's job list |
 | `fit.py` | Fit rating: High/Med/Low, lane, reason and gaps |
+| `insight.py` | Settings check, "Why didn't I see a job?", and the job-board search report |
 | `suggest.py` | ✨ Suggest towns, job-board searches and job titles (from your career and military background) |
 | `notify.py` | Morning email and ntfy push |
 | `llm.py` | Talks to the Claude API or Ollama |
