@@ -1127,6 +1127,22 @@ JSEARCH_FREE_MONTHLY = 200   # requests a month on the free plans
 PLACE_IN = re.compile(r"\bin\s+(?:\{home\}|[A-Z][A-Za-z.]+)")   # "in Orlando, FL" / "in {home}" (not "in training")
 
 
+def _strip_location_words(line):
+    """'director it in {home}' / 'director it remote' / 'remote director it' -> 'director it'.
+    Plain string handling (no slow patterns on what people type)."""
+    words = line.split()
+    low = [w.lower() for w in words]
+    if len(words) >= 2 and low[-2:] == ["in", "{home}"]:
+        return " ".join(words[:-2])
+    for loc in (["work", "from", "home"], ["remote"]):
+        n = len(loc)
+        if len(words) > n and low[-n:] == loc:
+            return " ".join(words[:-n])
+        if len(words) > n and low[:n] == loc:
+            return " ".join(words[n:])
+    return " ".join(words)
+
+
 def split_search_lines(text):
     """Old-style search lines -> (job phrases, exact searches).
     'director it in {home}' and 'director it remote' both become the phrase 'director it';
@@ -1136,9 +1152,7 @@ def split_search_lines(text):
         line = line.strip()
         if not line or line.startswith("#"):
             continue
-        p = re.sub(r"\s+in\s+\{home\}\s*$", "", line, flags=re.I)
-        if p == line:   # only a leading or trailing "remote" / "work from home" is a location word
-            p = re.sub(r"^(?:remote|work from home)\s+|\s+(?:remote|work from home)$", "", line, flags=re.I).strip()
+        p = _strip_location_words(line[:300])
         if p and not PLACE_IN.search(p):
             if p.lower() not in seen:
                 seen.add(p.lower())

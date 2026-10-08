@@ -203,30 +203,18 @@ def _title_fixes(title, ex, cfg):
 
 
 # --------------------------------------------------------------------------- why didn't I see this job?
-def _public_url(url):
-    """Only http(s) links to public internet addresses (never files or this network)."""
-    import ipaddress
-    import socket
-    u = urllib.parse.urlparse(url)
-    if u.scheme not in ("http", "https") or not u.hostname:
-        return False
-    try:
-        addrs = {a[4][0] for a in socket.getaddrinfo(u.hostname, u.port or (443 if u.scheme == "https" else 80))}
-    except OSError:
-        return False
-    for a in addrs:
-        ip = ipaddress.ip_address(a.split("%")[0])
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast or ip.is_unspecified:
-            return False
-    return True
+USAJOBS_ID = re.compile(r"usajobs\.gov/(?:job|GetJob/ViewDetails)/(\d{4,12})", re.I)
 
 
 def _page_title(url):
-    """Best effort: the job title from a posting page (og:title / <title>). '' if it can't be read."""
-    if not _public_url(url):
+    """Best effort: the job title from a USAJOBS posting (og:title / <title>). '' otherwise.
+    Only USAJOBS pages are read, at an address rebuilt from the job number — never an arbitrary link
+    (most other boards block automated reading anyway, so the person types the title)."""
+    m = USAJOBS_ID.search(str(url or "")[:1000])
+    if not m:
         return ""
     try:
-        text = sources.http(url, as_json=False, timeout=15, retries=1)
+        text = sources.http(f"https://www.usajobs.gov/job/{m.group(1)}", as_json=False, timeout=15, retries=1)
     except Exception:  # noqa: BLE001
         return ""
     m = (re.search(r'<meta[^>]+property=["\']og:title["\'][^>]+content=["\']([^"\']+)', text, re.I)
@@ -241,17 +229,25 @@ def _page_title(url):
 def _similar(a, b):
     """Same job title: the same words in any order (ignoring 'of', 'and', punctuation and a federal grade).
     'AI Program Director' and 'IT Program Director' are different jobs."""
-    strip = lambda s: re.sub(r"\s*\((?:gs|es|sl|st|gg|gm)\s[^)]*\)\s*$", "", sources._norm(s))   # noqa: E731
-    wa, wb = set(_title_words(strip(a))), set(_title_words(strip(b)))
+    wa, wb = set(_title_words(_drop_grade(a))), set(_title_words(_drop_grade(b)))
     return bool(wa) and wa == wb
+
+
+def _drop_grade(title):
+    """'deputy cio (es 00)' -> 'deputy cio' (plain string handling: no slow patterns on user text)."""
+    s = sources._norm(str(title or "")[:300])
+    i = s.rfind("(")
+    if i >= 0 and s.endswith(")") and s[i + 1:i + 4] in ("gs ", "es ", "sl ", "st ", "gg ", "gm "):
+        s = s[:i].strip()
+    return s
 
 
 def why_not(job):
     """job = {link, title, company, location}. Returns {title, steps:[{name, ok, text, fixes}], verdict}."""
-    link = str(job.get("link") or "").strip()
-    title = str(job.get("title") or "").strip()
-    company = str(job.get("company") or "").strip()
-    location = str(job.get("location") or "").strip()
+    link = str(job.get("link") or "").strip()[:1000]
+    title = str(job.get("title") or "").strip()[:200]
+    company = str(job.get("company") or "").strip()[:120]
+    location = str(job.get("location") or "").strip()[:160]
     cfg = search.get_config(include_secret=True)
     prof = ps.get_profile()
     ctx = sources.Context(cfg, prof)
@@ -297,7 +293,7 @@ def why_not(job):
         step("Link", True, f"{host} is {'a known job site' if known else 'not on your skip list'}.")
 
     # 3. title
-    federal = "usajobs.gov" in host
+    federal = host == "usajobs.gov" or host.endswith(".usajobs.gov")
     ex = ctx.explain_title(title)
     if ex["ok"]:
         bits = [f"seniority “{_show(ex['seniority'])}”" if ex["seniority"] else "",

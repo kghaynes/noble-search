@@ -270,11 +270,18 @@ class WhyNot(KeepConfig):
                 conn.execute("DELETE FROM jobs WHERE job_key='bae|it program director'")
         self.assertFalse(r["steps"][0]["ok"]); self.assertEqual(r["steps"][0]["fixes"][0]["op"], "restore")
 
-    def test_link_lookup_only_public_web(self):
-        self.assertFalse(insight._public_url("file:///etc/passwd"))
-        self.assertFalse(insight._public_url("http://127.0.0.1:8093/settings"))
-        self.assertFalse(insight._public_url("http://192.168.30.38/"))
-        self.assertEqual(insight._page_title("file:///etc/hostname"), "")
+    def test_link_lookup_only_usajobs(self):
+        calls = []
+        old = sources.http
+        sources.http = lambda url, **k: calls.append(url) or "<title>Deputy Chief Information Officer - USAJOBS - Job Announcement</title>"
+        try:
+            self.assertEqual(insight._page_title("file:///etc/passwd"), "")
+            self.assertEqual(insight._page_title("http://127.0.0.1:8093/settings"), "")
+            self.assertEqual(insight._page_title("https://evil.example/usajobs.gov"), "")
+            self.assertEqual(insight._page_title("https://www.usajobs.gov/job/887470100?x=1"), "Deputy Chief Information Officer")
+        finally:
+            sources.http = old
+        self.assertEqual(calls, ["https://www.usajobs.gov/job/887470100"])
 
     def test_needs_title(self):
         old = sources.http
