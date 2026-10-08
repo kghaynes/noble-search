@@ -30,7 +30,7 @@ Rating scale:
 Return ONLY a JSON object:
 {"fit": "High" | "Med" | "Low",
  "lane": one of LANES,
- "reason": "Max 45 words, plain language, three parts in this order. (1) What the job actually is, in a few words (e.g. 'Runs program-health reviews for an aircraft sector'). (2) Why THIS candidate fits THIS job: name the one or two parts of their background that match this posting's main duties, in civilian terms. Do not open with years of experience or repeat the same headline numbers for every job; use a number only when it matches the scale this posting asks for. (3) 'Gap:' and the main gap or risk. Refer to the candidate as 'you'. A higher clearance than required is not a gap; mention clearance only if the posting requires one.",
+ "reason": "Max 45 words, plain language, three parts in this order. (1) What the job actually is, in a few words (e.g. 'Runs program-health reviews for an aircraft sector'). (2) Why THIS candidate fits THIS job: name the one or two parts of their background that match this posting's main duties, in civilian terms. Do not open with years of experience or repeat the same headline numbers for every job; use a number only when it matches the scale this posting asks for. (3) 'Gap:' and the main gap or risk. Refer to the candidate as 'you'. A higher clearance than required is not a gap; mention clearance only if the posting requires one. If the location says relocation is required, include 'relocation required' in the gap.",
  "meets_basic_quals": "yes" | "no" | "unclear"}
 """
 

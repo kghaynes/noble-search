@@ -38,9 +38,14 @@ DEFAULTS = {
     "usajobs_api_key": "",
     "usajobs_email": "",
     "usajobs_min_grade": 14,
+    "usajobs_nationwide": "off",   # off | agencies | all — also keep USAJOBS postings filled "anywhere" (relocation)
+    "usajobs_agencies": "",        # agencies with offices near home, one per line (for "agencies")
     "jsearch_api_key": "",
     "jsearch_provider": "rapidapi",
-    "jsearch_queries": sources.DEFAULT_JSEARCH_QUERIES,
+    "jsearch_what": "",            # jobs to look for, one per line ("director of IT"); the app adds near home / remote
+    "jsearch_queries": sources.DEFAULT_JSEARCH_QUERIES,   # advanced: exact searches, run as typed
+    "jsearch_budget": sources.JSEARCH_FREE_MONTHLY,      # job-board requests the plan allows each month
+    "title_examples": "",          # titles the person wants to catch (from ✨ Suggest titles), used by the check
     "jsearch_pages": 1,
     "jsearch_skip_sites": sources.DEFAULT_JSEARCH_SKIP,
     "fit_provider": "anthropic",
@@ -60,7 +65,7 @@ DEFAULTS = {
     "max_pages": 150,
 }
 SECRETS = ("usajobs_api_key", "jsearch_api_key", "smtp_password", "ntfy_token")
-LIMITS = {"smtp_port": (1, 65535), "max_age_days": (1, 60), "usajobs_min_grade": (1, 15), "jsearch_pages": (1, 5), "detail_cap": (5, 300), "max_pages": (5, 500)}
+LIMITS = {"jsearch_budget": (10, 1000000), "smtp_port": (1, 65535), "max_age_days": (1, 60), "usajobs_min_grade": (1, 15), "jsearch_pages": (1, 5), "detail_cap": (5, 300), "max_pages": (5, 500)}
 
 # never overwritten once they have a value (a rating or a hand-checked detail may already be there)
 KEEP_IF_SET = {"fit", "fit_reason", "lane", "location", "work_mode", "salary", "clearance", "employment_type"}
@@ -82,6 +87,10 @@ def get_config(include_secret=False):
             data = {}
     cfg = dict(DEFAULTS)
     cfg.update({k: v for k, v in data.items() if k in DEFAULTS})
+    if "jsearch_what" not in data and str(data.get("jsearch_queries") or "").strip():
+        # settings from before "jobs to look for": split old search lines into phrases + exact searches
+        phrases, exact = sources.split_search_lines(data["jsearch_queries"])
+        cfg["jsearch_what"], cfg["jsearch_queries"] = "\n".join(phrases), "\n".join(exact)
     if not include_secret:
         for sk in SECRETS:
             k = cfg.get(sk) or ""
@@ -97,7 +106,11 @@ def save_config(new):
                 cur = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
             cur = {}
-        for k, v in (new or {}).items():
+        if "jsearch_what" not in cur and str(cur.get("jsearch_queries") or "").strip() and "jsearch_what" in (new or {}):
+            ph, ex = sources.split_search_lines(cur["jsearch_queries"])   # first save after the upgrade
+            cur["jsearch_what"], cur["jsearch_queries"] = "\n".join(ph), "\n".join(ex)
+        # job phrases last: lines that name another place move into the exact searches
+        for k, v in sorted((new or {}).items(), key=lambda kv: kv[0] == "jsearch_what"):
             if k not in DEFAULTS:
                 continue
             if k in SECRETS:
@@ -116,6 +129,13 @@ def save_config(new):
                     v = DEFAULTS[k]
             elif k == "jsearch_provider":
                 v = v if v in sources.JSEARCH_HOSTS else "rapidapi"
+            elif k == "jsearch_what":
+                phrases, exact = sources.split_search_lines(v)   # location is added by the app
+                v = "\n".join(phrases)
+                if exact:   # lines that name another place stay as exact searches
+                    cur["jsearch_queries"] = "\n".join(filter(None, [str(new.get("jsearch_queries", cur.get("jsearch_queries")) or "").strip()] + exact))
+            elif k == "usajobs_nationwide":
+                v = v if v in sources.USAJOBS_NATIONWIDE_MODES else "off"
             elif k == "fit_provider":
                 v = v if v in ("ollama", "anthropic", "off") else "anthropic"
             elif k == "run_time":
@@ -164,10 +184,13 @@ def test_source(name):
     return sources.test_source(name, cfg, sources.Context(cfg, ps.get_profile()))
 
 
+def jsearch_plan(cfg=None):
+    cfg = cfg or get_config(include_secret=True)
+    return sources.jsearch_plan(cfg, sources.Context(cfg, ps.get_profile()))
+
+
 def jsearch_monthly_estimate(cfg):
-    n = len([l for l in str(cfg.get("jsearch_queries") or "").splitlines() if l.strip() and not l.strip().startswith("#")])
-    days = len([d for d in str(cfg.get("days") or "").split(",") if d.strip()])
-    return round(n * int(cfg.get("jsearch_pages") or 1) * days * 4.33)
+    return jsearch_plan(cfg)["monthly"]
 
 
 def board_list(cfg):
@@ -190,6 +213,8 @@ def init(db_fn, db_lock):
             status TEXT, found INTEGER DEFAULT 0, added INTEGER DEFAULT 0, updated INTEGER DEFAULT 0,
             detail TEXT DEFAULT '[]')""")
         conn.execute("UPDATE search_runs SET status='interrupted', finished=? WHERE status='running'", (_now(),))
+        # every title a run looked at, and why it was kept or dropped (for "Why didn't I see this job?")
+        conn.execute("CREATE TABLE IF NOT EXISTS run_titles (run_id INTEGER PRIMARY KEY, data BLOB)")
         # tidy values written by the first release of the search
         conn.execute("UPDATE jobs SET location='Remote (US)' WHERE location IN ('United States-Remote','US-Remote','Remote','USA-Remote')")
         conn.execute("UPDATE jobs SET location=substr(location, 1, length(location)-4) WHERE location LIKE '%, __, US'")
@@ -306,6 +331,7 @@ def run(trigger="manual", listing_fields=None, only=None):
             run_id = cur.lastrowid
         cfg = get_config(include_secret=True)
         ctx = sources.Context(cfg, ps.get_profile())
+        ctx.recording = True
         detail, total_found, total_added, total_updated = [], 0, 0, 0
         new_keys = []
 
@@ -314,6 +340,12 @@ def run(trigger="manual", listing_fields=None, only=None):
             a, u, keys = merge_rows(rows, listing_fields)
             new_keys.extend(keys)
             st["added"], st["updated"] = a, u
+            added = set(keys)
+            for r in rows:   # new jobs per job-board search (for the search report card)
+                li = r.get("_line")
+                if li is not None and f"{r['company']}|{r['title']}".strip().lower() in added:
+                    st["lines"][li]["new"] += 1
+            settle_titles(ctx, ctx.source, rows)
             total_found += len(rows)
             total_added += a
             total_updated += u
@@ -336,7 +368,9 @@ def run(trigger="manual", listing_fields=None, only=None):
             if sources.STOP.is_set():
                 break
             _state.update(current=name, step=i)
+            ctx.source, ctx._cur = name, None
             save(*step())
+        save_titles(run_id, ctx.seen)
         stopped = sources.STOP.is_set()
         bad = sum(1 for d in detail if not d.get("ok"))
         stat = "stopped" if stopped else "done" if not bad else ("partial" if bad < len(detail) else "failed")
@@ -355,6 +389,56 @@ def run(trigger="manual", listing_fields=None, only=None):
         _state.update(running=False, current="", started=None, step=0, steps=0, t0=None)
         sources.STOP.clear()
         _run_lock.release()
+
+
+def settle_titles(ctx, source, rows):
+    """After a source finishes: mark each title that passed the title rules as kept, or say why it was
+    dropped later (location, age, or only on re-posting sites)."""
+    kept = [str(r.get("title") or "").lower() for r in rows]
+    for e in ctx.seen:
+        if e["s"] != source or not e["ok"] or "out" in e:
+            continue
+        t = e["t"].lower().strip()
+        if t and any(k == t or k.startswith(t + " (") for k in kept):   # USAJOBS adds "(GS-15)" to the title
+            e["out"], e["why"] = "kept", "Kept"
+        elif e.get("old"):
+            e["out"], e["why"] = "dropped", f"Posted {e['old']}, more than {ctx.max_age} days ago"
+        elif e.get("skipsite"):
+            e["out"], e["why"] = "dropped", "Only listed on re-posting sites you skip"
+        elif "w" in e and not e["w"]:
+            e["out"], e["why"] = "dropped", f"Location “{e.get('loc') or 'not given'}” isn't near home or remote"
+        else:
+            e["out"], e["why"] = "dropped", "Passed the title rules but wasn't kept (location, date or link)"
+
+
+RUN_TITLES_KEEP = 5
+
+
+def save_titles(run_id, seen):
+    import zlib
+    rows = [[e["s"], e["t"], e.get("out") or ("title" if not e["ok"] else "dropped"), e.get("why", "")] for e in seen]
+    blob = zlib.compress(json.dumps(rows, separators=(",", ":")).encode("utf-8"), 6)
+    db_fn, lock = _db
+    with lock, db_fn() as conn:
+        conn.execute("INSERT OR REPLACE INTO run_titles(run_id, data) VALUES(?, ?)", (run_id, blob))
+        conn.execute("DELETE FROM run_titles WHERE run_id NOT IN (SELECT run_id FROM run_titles ORDER BY run_id DESC LIMIT ?)",
+                     (RUN_TITLES_KEEP,))
+
+
+def recent_titles(runs=3):
+    """[(run_id, started, [[source, title, outcome, why], ...])] newest first."""
+    import zlib
+    db_fn, lock = _db
+    with lock, db_fn() as conn:
+        rows = conn.execute("""SELECT t.run_id, r.started, t.data FROM run_titles t LEFT JOIN search_runs r ON r.id=t.run_id
+                               ORDER BY t.run_id DESC LIMIT ?""", (runs,)).fetchall()
+    out = []
+    for rid, started, blob in rows:
+        try:
+            out.append((rid, started, json.loads(zlib.decompress(blob).decode("utf-8"))))
+        except Exception:  # noqa: BLE001
+            continue
+    return out
 
 
 def run_async(trigger, listing_fields, only=None):

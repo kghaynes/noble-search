@@ -239,17 +239,77 @@ def employment(v):
 
 
 # --------------------------------------------------------------------------- matching context
+# ---- title words: plain words for everyone, patterns for advanced users ----------------------------
+# A line with any of these characters is treated as a regular expression (advanced; old lists keep working).
+PATTERN_CHARS = re.compile(r"[\\|()\[\]^$*?{}]")
+# Words that commonly start compound words ("cyber" -> "cybersecurity").
+PREFIX_WORDS = {"cyber", "aero", "astro", "bio", "geo", "info", "tele", "micro"}
+FILLER = r"[\s,&.]+(?:(?:of|and|for|the|&)[\s,.]+)?"   # "director it" ~ "Director of IT"; "sr director" ~ "Sr. Director"
+
+
+def _word_pattern(w):
+    """One plain word -> pattern that also matches its plural and common endings.
+    'program' ~ programs, 'operations' ~ operation, 'security' ~ securities, 'engineer' ~ engineering.
+    Words of 3 letters or fewer (it, ai, vp, cio) must match exactly."""
+    w = w.lower()
+    e = re.escape
+    if w in PREFIX_WORDS:
+        return e(w) + r"\w*"
+    if len(w) <= 3 or not w.isalpha():
+        return e(w)
+    if w.endswith("ies") and len(w) > 4:
+        return e(w[:-3]) + "(?:y|ies)"
+    if w.endswith("y") and w[-2] not in "aeiou":
+        return e(w[:-1]) + "(?:y|ies)"
+    if w.endswith(("ses", "xes", "ches", "shes")):
+        w = w[:-2]
+    elif w.endswith("s") and not w.endswith(("ss", "us", "is")):
+        w = w[:-1]
+    return e(w) + "(?:s|es|ing|ed|er|ers|ship|ships)?"
+
+
+def term_pattern(line):
+    """Compile one list line. Plain words -> whole-word, any-case, plural-aware match; a line with
+    pattern characters (\\ | ( ) [ ] ...) -> used as a regular expression."""
+    line = line.strip()
+    if PATTERN_CHARS.search(line):
+        try:
+            return re.compile(line, re.I)
+        except re.error:
+            pass   # not a valid pattern: fall back to plain words
+    words = re.findall(r"[a-z0-9#+]+", _norm(line))
+    if not words:
+        return re.compile(re.escape(line), re.I)
+    return re.compile(r"(?<![a-z0-9])" + FILLER.join(_word_pattern(w) for w in words) + r"(?![a-z0-9])", re.I)
+
+
+def is_pattern_line(line):
+    return bool(PATTERN_CHARS.search(line or ""))
+
+
 def _compile_lines(text):
+    """[(original line, compiled pattern)] for every non-empty, non-comment line."""
     out = []
     for line in (text or "").splitlines():
         line = line.strip()
-        if not line or line.startswith("#"):
+        if not line or line.startswith("#") or line == "*":
             continue
-        try:
-            out.append(re.compile(line, re.I))
-        except re.error:
-            out.append(re.compile(re.escape(line), re.I))
+        out.append((line, term_pattern(line)))
     return out
+
+
+def first_match(terms, text):
+    """The first list line that matches the text (normalized), else None."""
+    t = _norm(text)
+    for line, rx in terms:
+        if rx.search(t):
+            return line
+    return None
+
+
+def show_term(line):
+    """A list line as a person would read it ('\\bit\\b' -> 'it')."""
+    return re.sub(r"\\b", "", line).replace("|", " / ")
 
 
 def _norm(s):
@@ -304,6 +364,8 @@ class Context:
         self.detail_cap = int(cfg.get("detail_cap") or 60)
         self.max_pages = int(cfg.get("max_pages") or 150)
         self.log = []
+        # optional record of every title checked (for "Why didn't I see this job?"); search.run turns it on
+        self.recording, self.source, self.seen, self._cur, self._per_source = False, "", [], None, {}
 
     def _home_city(self, loc):
         """'123 Main St, Springfield, IL 62701' / 'Springfield, Illinois' / 'Springfield IL 62701' -> 'Springfield, IL'."""
@@ -327,25 +389,66 @@ class Context:
 
     def field_ok(self, title):
         """True when no field words are set, or the title names one of them."""
-        return not self.fields or any(r.search(_norm(title)) for r in self.fields)
+        return not self.fields or first_match(self.fields, title) is not None
+
+    def explain_title(self, title, senior=False):
+        """Walk the title rules. Returns {ok, reason, seniority, field, skip, internal}.
+        senior=True: a senior federal grade stands in for the seniority word."""
+        t = _norm(title)
+        out = {"ok": False, "reason": "", "seniority": None, "field": None, "skip": None, "internal": False}
+        if INTERNAL_ONLY.search(t):
+            out.update(internal=True, reason="Open only to current employees")
+            return out
+        out["skip"] = first_match(self.exclude, title)
+        if out["skip"]:
+            out["reason"] = f"Skip word “{show_term(out['skip'])}” is in the title"
+            return out
+        if not (senior or self.any_title):
+            out["seniority"] = first_match(self.include, title)
+            if not out["seniority"]:
+                out["reason"] = "No seniority word in the title (e.g. director, VP, head of)"
+                return out
+        if self.fields:
+            out["field"] = first_match(self.fields, title)
+            if not out["field"]:
+                out["reason"] = "No field word in the title (e.g. IT, cyber, program)"
+                return out
+        out["ok"] = True
+        out["reason"] = "Title matches your rules"
+        return out
+
+    def _record_title(self, title, ex):
+        if not self.recording:
+            return
+        n = self._per_source.get(self.source, 0)
+        if n >= 8000:   # cap per source, so a huge source can't crowd out the others
+            self._cur = None
+            return
+        self._per_source[self.source] = n + 1
+        e = {"s": self.source, "t": str(title or "")[:160], "ok": ex["ok"], "why": ex["reason"]}
+        self.seen.append(e)
+        self._cur = e if ex["ok"] else None
 
     def title_allowed(self, title):
         """Not excluded (skip list or internal-only) and in the user's field — used where a senior
         federal grade stands in for a seniority word."""
-        t = _norm(title)
-        return not INTERNAL_ONLY.search(t) and not any(r.search(t) for r in self.exclude) and self.field_ok(title)
+        ex = self.explain_title(title, senior=True)
+        self._record_title(title, ex)
+        return ex["ok"]
 
     def title_ok(self, title):
-        if INTERNAL_ONLY.search(_norm(title)):
-            return False   # open only to current employees: never useful to an outside candidate
-        if self.any_title:
-            return not any(r.search(_norm(title)) for r in self.exclude) and self.field_ok(title)
-        t = _norm(title)
-        return (any(r.search(t) for r in self.include) and not any(r.search(t) for r in self.exclude)
-                and self.field_ok(title))
+        ex = self.explain_title(title)
+        self._record_title(title, ex)
+        return ex["ok"]
 
     def where(self, text, remote_flag=False, loose_remote=True):
         """Return 'local', 'remote' or None for a location string."""
+        w = self._where(text, remote_flag, loose_remote)
+        if self._cur is not None and self.recording:
+            self._cur["loc"], self._cur["w"] = str(text or "")[:120], w
+        return w
+
+    def _where(self, text, remote_flag=False, loose_remote=True):
         raw = str(text or "")
         t = _norm(raw)
         foreign = bool(FOREIGN.search(t)) and not re.search(r"\b(united states|usa|us)\b", t)
@@ -369,12 +472,15 @@ class Context:
         return None
 
     def age_ok(self, iso):
-        if not iso:
-            return True
-        try:
-            return (self.today - date.fromisoformat(iso)).days <= self.max_age
-        except ValueError:
-            return True
+        ok = True
+        if iso:
+            try:
+                ok = (self.today - date.fromisoformat(iso)).days <= self.max_age
+            except ValueError:
+                ok = True
+        if not ok and self._cur is not None and self.recording:
+            self._cur["old"] = iso
+        return ok
 
 
 def make_row(ctx, *, company, title, location, where, link, posted, description="", salary="",
@@ -857,6 +963,41 @@ def run_board(board, ctx):
 
 
 # --------------------------------------------------------------------------- USAJOBS
+# Postings that are not tied to one place: "Multiple Locations", "Anywhere in the U.S.",
+# "Location Negotiable After Selection", "NASA - United States Locations", "Nationwide"...
+NATIONWIDE_RE = re.compile(r"\b(anywhere|nationwide|negotiable|multiple locations?|various locations?|"
+                           r"united states locations?|all locations|duty station (?:to be )?determined)\b|"
+                           r"^\s*(?:united states|usa|us)\s*$", re.I)
+NATIONWIDE_MIN_SITES = 5   # a posting listing this many separate places is treated as nationwide too
+USAJOBS_NATIONWIDE_MODES = ("off", "agencies", "all")
+
+
+def is_nationwide(locs):
+    """True if a USAJOBS posting is filled 'anywhere' (one of many/negotiable sites), not at one named place."""
+    names = [str(x or "").strip() for x in locs if str(x or "").strip()]
+    return any(NATIONWIDE_RE.search(x) for x in names) or len(set(names)) >= NATIONWIDE_MIN_SITES
+
+
+def agency_lines(cfg):
+    return [x.strip() for x in str(cfg.get("usajobs_agencies") or "").splitlines() if x.strip()]
+
+
+def agency_match(d, names):
+    """Does the posting's agency match one of the user's lines? Plain, case-insensitive 'contains' match
+    against the organization, department and sub-agency names (e.g. 'NASA' or 'Air Force')."""
+    if not names:
+        return False
+    det = (d.get("UserArea") or {}).get("Details") or {}
+    hay = " | ".join(str(x or "") for x in (d.get("OrganizationName"), d.get("DepartmentName"),
+                                              det.get("SubAgencyName"), det.get("OrganizationCodes"))).lower()
+    aliases = {"nasa": "national aeronautics and space administration"}
+    for n in names:
+        n = n.lower()
+        if n in hay or (aliases.get(n) and aliases[n] in hay):
+            return True
+    return False
+
+
 def read_usajobs(cfg, ctx):
     key, email = (cfg.get("usajobs_api_key") or "").strip(), (cfg.get("usajobs_email") or "").strip()
     st = {"name": "USAJOBS", "type": "usajobs", "scanned": 0, "title_matches": 0, "kept": 0, "errors": [],
@@ -875,13 +1016,23 @@ def read_usajobs(cfg, ctx):
         st["note"] = "Near-home search skipped: add your home town (e.g. \"Springfield, IL\") on the Profile page."
     if ctx.allow_remote:
         queries.append({"RemoteIndicator": "True"})
+    # Optional third search: senior jobs anywhere in the US, kept only when the posting itself is
+    # nationwide (not one named city) — e.g. SES jobs "relocate to an assigned NASA location".
+    mode = cfg.get("usajobs_nationwide") or "off"
+    agencies = agency_lines(cfg)
+    st["nationwide"] = 0
+    if mode == "agencies" and not agencies:
+        st["note"] = ((st.get("note") or "") + " Nationwide search skipped: list the agencies near you on the Search page.").strip()
+    elif mode in ("agencies", "all"):
+        queries.append({"PayGradeLow": f"{max(1, min_grade - 1):02d}", "_nationwide": True})
+        queries.append({"JobGradeCode": "ES;SL;ST", "_nationwide": True})   # SES-type jobs carry grade "00"
     hdr = {"Host": "data.usajobs.gov", "User-Agent": email, "Authorization-Key": key}
     seen, rows = set(), []
     try:
         for q in queries:
             page = 1
             while page <= 10:
-                qs = urllib.parse.urlencode({**q, "DatePosted": min(ctx.max_age, 60), "ResultsPerPage": 500,
+                qs = urllib.parse.urlencode({**{k: v for k, v in q.items() if not k.startswith("_")}, "DatePosted": min(ctx.max_age, 60), "ResultsPerPage": 500,
                                              "Page": page, "WhoMayApply": "public"})
                 j = http(f"https://data.usajobs.gov/api/search?{qs}", headers=hdr)
                 res = (j.get("SearchResult") or {})
@@ -914,8 +1065,12 @@ def read_usajobs(cfg, ctx):
                     w = "remote" if remote and ctx.allow_remote else ctx.where(" | ".join(locs), loose_remote=False)
                     if "LocationName" in q and not w:
                         w = "local"  # USAJOBS already applied the radius
+                    if not w and q.get("_nationwide") and is_nationwide(locs) and (mode == "all" or agency_match(d, agencies)):
+                        w = "nationwide"
                     if not w:
                         continue
+                    if w == "nationwide":
+                        st["nationwide"] += 1
                     pay = (d.get("PositionRemuneration") or [{}])[0] or {}
                     sal = ""
                     if pay.get("MinimumRange"):
@@ -924,19 +1079,24 @@ def read_usajobs(cfg, ctx):
                         except (TypeError, ValueError):
                             sal = ""
                     duties = det.get("MajorDuties") or []
-                    desc = "\n\n".join(filter(None, [det.get("JobSummary") or "",
+                    where_txt = d.get("PositionLocationDisplay") or "; ".join(locs[:6])
+                    desc = "\n\n".join(filter(None, [
+                        f"Location: {where_txt} — nationwide posting; the person selected must relocate to an assigned duty station."
+                        if w == "nationwide" else "",
+                        det.get("JobSummary") or "",
                                                      "\n".join("• " + x for x in duties if isinstance(x, str)),
                                                      d.get("QualificationSummary") or ""]))
                     org = d.get("OrganizationName") or d.get("DepartmentName") or "Federal"
                     grade = f"{plan}-{det.get('LowGrade')}" + (f"/{det.get('HighGrade')}" if det.get("HighGrade") and det.get("HighGrade") != det.get("LowGrade") else "") if plan else ""
                     rows.append(make_row(
                         ctx, company=org, title=f"{d.get('PositionTitle', '')}{f' ({grade})' if grade else ''}",
-                        location=pick_location(ctx, locs) if w == "local" else "Remote (US)", where=w,
+                        location={"local": pick_location(ctx, locs), "remote": "Remote (US)"}.get(
+                            w, f"Nationwide — relocation required ({where_txt[:80]})"), where=w,
                         link=d.get("PositionURI") or "", posted=parse_date(d.get("PublicationStartDate")),
                         closing=parse_date(d.get("ApplicationCloseDate")), description=desc, salary=sal,
                         clearance=det.get("SecurityClearance") if det.get("SecurityClearance") not in (None, "", "Not Required", "Not Applicable") else "",
                         employment_type="Federal (" + (((d.get("PositionSchedule") or [{}])[0] or {}).get("Name") or "Full-time") + ")",
-                        work_mode="Remote" if w == "remote" else ("Telework eligible" if str(det.get("TeleworkEligible")).lower() == "true" else "On-site"),
+                        work_mode="Remote" if w == "remote" else "On-site — relocation required" if w == "nationwide" else ("Telework eligible" if str(det.get("TeleworkEligible")).lower() == "true" else "On-site"),
                         source="USAJOBS"))
                 pages = int((res.get("UserArea") or {}).get("NumberOfPages") or 1)
                 if page >= pages or not items:
@@ -946,6 +1106,8 @@ def read_usajobs(cfg, ctx):
         st["ok"] = False
         st["errors"].append(str(e))
     st["kept"] = len(rows)
+    if st.get("nationwide"):
+        st["note"] = ((st.get("note") or "") + f" {st['nationwide']} nationwide posting(s) kept — relocation required.").strip()
     st["seconds"] = round(time.time() - t0, 1)
     return rows, st
 
@@ -959,13 +1121,81 @@ JSEARCH_HOSTS = {
 }
 
 
-def jsearch_queries(cfg, ctx):
-    out = []
-    for line in (cfg.get("jsearch_queries") or DEFAULT_JSEARCH_QUERIES).splitlines():
+JSEARCH_FREE_MONTHLY = 200   # requests a month on the free plans
+
+
+PLACE_IN = re.compile(r"\bin\s+(?:\{home\}|[A-Z][A-Za-z.]+)")   # "in Orlando, FL" / "in {home}" (not "in training")
+
+
+def split_search_lines(text):
+    """Old-style search lines -> (job phrases, exact searches).
+    'director it in {home}' and 'director it remote' both become the phrase 'director it';
+    a line naming another place ('cio in Orlando, FL', even with 'remote') stays an exact search."""
+    phrases, exact, seen = [], [], set()
+    for line in str(text or "").splitlines():
         line = line.strip()
-        if line and not line.startswith("#"):
-            out.append(line.replace("{home}", ctx.home_city or "United States"))
-    return out
+        if not line or line.startswith("#"):
+            continue
+        p = re.sub(r"\s+in\s+\{home\}\s*$", "", line, flags=re.I)
+        if p == line:   # only a leading or trailing "remote" / "work from home" is a location word
+            p = re.sub(r"^(?:remote|work from home)\s+|\s+(?:remote|work from home)$", "", line, flags=re.I).strip()
+        if p and not PLACE_IN.search(p):
+            if p.lower() not in seen:
+                seen.add(p.lower())
+                phrases.append(p)
+        else:
+            exact.append(line)
+    return phrases, exact
+
+
+def run_days(cfg):
+    return [d.strip()[:3].title() for d in str(cfg.get("days") or "Mon,Tue,Wed,Thu,Fri").split(",") if d.strip()] or ["Mon"]
+
+
+def jsearch_plan(cfg, ctx, day=None):
+    """Turn the user's job phrases into the actual job-board searches.
+    Each phrase is searched near home and/or remote, following the Profile's work modes. If that is more
+    than the monthly request budget allows, the searches take turns: each run does as many as fit, and
+    the next run continues where the last one stopped."""
+    phrases, _ = split_search_lines(cfg.get("jsearch_what") or "")
+    exact = [l.strip() for l in str(cfg.get("jsearch_queries") or "").splitlines() if l.strip() and not l.strip().startswith("#")]
+    searches, notes = [], []
+    local_ok = ctx.allow_local and bool(ctx.home_city)
+    if ctx.allow_local and not ctx.home_city and phrases:
+        notes.append("Near-home searches skipped: add your home town on the Profile page.")
+    for ph in phrases:
+        if local_ok:
+            searches.append({"phrase": ph, "mode": "near home", "q": f"{ph} in {ctx.home_city}", "remote": False})
+        if ctx.allow_remote:
+            searches.append({"phrase": ph, "mode": "remote", "q": f"{ph} remote", "remote": True})
+    for line in exact:
+        searches.append({"phrase": line, "mode": "exact", "q": line.replace("{home}", ctx.home_city or "United States"),
+                         "remote": bool(re.search(r"\bremote\b", line, re.I))})
+    pages = max(1, min(5, int(cfg.get("jsearch_pages") or 1)))
+    days = run_days(cfg)
+    runs_month = len(days) * 4.33
+    budget = int(cfg.get("jsearch_budget") or JSEARCH_FREE_MONTHLY)
+    per_run = max(1, int(budget // (runs_month * pages)))
+    total = len(searches)
+    day = day or date.today()
+    if total <= per_run:
+        today, rotating = list(searches), False
+    else:
+        pos = days.index(DAYS_SHORT[day.weekday()]) if DAYS_SHORT[day.weekday()] in days else 0
+        k = (day.toordinal() // 7) * len(days) + pos          # counts run days, so turns are even
+        start = (k * per_run) % total
+        today, rotating = [searches[(start + i) % total] for i in range(per_run)], True
+    return {"searches": searches, "today": today, "per_run": per_run, "total": total, "rotating": rotating,
+            "pages": pages, "budget": budget, "monthly": round(len(today) * pages * runs_month), "notes": notes,
+            "modes": [m for m, ok in (("near home", local_ok), ("remote", ctx.allow_remote)) if ok]}
+
+
+DAYS_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+
+def jsearch_queries(cfg, ctx):
+    """The searches to run today (text only)."""
+    return [s["q"] for s in jsearch_plan(cfg, ctx)["today"]]
 
 
 def _jsearch_call(cfg, query, remote, page=1, pages=1, date_posted="month"):
@@ -1060,8 +1290,9 @@ def jsearch_row(ctx, x, w, skip=()):
 def read_jsearch(cfg, ctx):
     st = {"name": "JSearch (job boards)", "type": "jsearch", "scanned": 0, "title_matches": 0, "kept": 0, "errors": [],
           "seconds": 0, "ok": True, "requests": 0}
-    if (cfg.get("jsearch_api_key") or "").strip() and not jsearch_queries(cfg, ctx):
-        st["skipped"] = "No job-board searches yet. Add some on the Search page (or use “Suggest searches”)."
+    plan = jsearch_plan(cfg, ctx)
+    if (cfg.get("jsearch_api_key") or "").strip() and not plan["today"]:
+        st["skipped"] = "No jobs to look for yet. Add some on the Search page (or use “Suggest searches”)."
         return [], st
     if not (cfg.get("jsearch_api_key") or "").strip():
         st["skipped"] = "Add a JSearch API key on the Search page to include Indeed, LinkedIn, ZipRecruiter and other boards."
@@ -1069,11 +1300,17 @@ def read_jsearch(cfg, ctx):
     t0 = time.time()
     pages = max(1, min(5, int(cfg.get("jsearch_pages") or 1)))
     date_posted = "week" if ctx.max_age <= 7 else "month"
-    seen, rows = set(), []
+    seen, rows, kept_ids = set(), [], set()
     skip = _skip_list(cfg)
     st["skipped_sites"] = 0
-    for q in jsearch_queries(cfg, ctx):
-        remote = bool(re.search(r"\bremote\b", q, re.I))
+    st["lines"] = []
+    if plan["rotating"]:
+        st["note"] = f"Ran {len(plan['today'])} of {plan['total']} searches today (they take turns to stay within {plan['budget']} requests a month)."
+    for s in plan["today"]:
+        q, remote = s["q"], s["remote"]
+        line = {"phrase": s["phrase"], "mode": s["mode"], "q": q, "returned": 0, "title_ok": 0, "kept": 0, "new": 0, "overlap": 0}
+        st["lines"].append(line)
+        li = len(st["lines"]) - 1
         try:
             j = _jsearch_call(cfg, q, remote, pages=pages, date_posted=date_posted)
         except ReaderError as e:
@@ -1084,14 +1321,18 @@ def read_jsearch(cfg, ctx):
             continue
         st["requests"] += pages
         for x in jsearch_items(j):
+            line["returned"] += 1
             jid = x.get("job_id") or x.get("job_uid") or (x.get("employer_name"), x.get("job_title"))
             if jid in seen:
+                if jid in kept_ids:
+                    line["overlap"] += 1   # useful, but an earlier search already kept it
                 continue
             seen.add(jid)
             st["scanned"] += 1
             if not ctx.title_ok(x.get("job_title")):
                 continue
             st["title_matches"] += 1
+            line["title_ok"] += 1
             posted = jsearch_posted(x)
             if not ctx.age_ok(posted):
                 continue
@@ -1101,13 +1342,17 @@ def read_jsearch(cfg, ctx):
             if w:
                 if not jsearch_link(x, skip):
                     st["skipped_sites"] += 1   # only re-posting sites had it
+                    if ctx._cur is not None and ctx.recording:
+                        ctx._cur["skipsite"] = True
                     continue
-                rows.append(jsearch_row(ctx, x, w, skip))
+                rows.append({**jsearch_row(ctx, x, w, skip), "_line": li})
+                line["kept"] += 1
+                kept_ids.add(jid)
     if st["errors"] and not rows and st["requests"] == 0:
         st["ok"] = False
     st["kept"] = len(rows)
     if st["skipped_sites"]:
-        st["note"] = f"{st['skipped_sites']} skipped: only listed on re-posting sites you chose to skip."
+        st["note"] = ((st.get("note") or "") + f" {st['skipped_sites']} skipped: only listed on re-posting sites you chose to skip.").strip()
     st["seconds"] = round(time.time() - t0, 1)
     return rows, st
 

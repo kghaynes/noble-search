@@ -135,6 +135,11 @@ details.howto code{font-size:12px;background:var(--bg);border:1px solid var(--li
 .prog .steps .on{color:var(--ink);font-weight:700}.prog .steps .ok{color:var(--ok,#0f7b4a)}
 .warnbox{background:#fff7e6;border:1px solid #f3dca6;border-radius:12px;padding:12px 16px;margin:12px 0;color:#5a3d00;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 @media (prefers-color-scheme: dark){.warnbox{background:#33290f;border-color:#5c4a1a;color:#f3e3b8}}
+.whysteps{list-style:none;padding:0;margin:8px 0 0}.whysteps li{padding:7px 0;border-top:1px solid var(--line);font-size:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:baseline}
+.whysteps .ic{display:inline-block;width:20px;text-align:center;font-weight:800}.whysteps .wy-ok .ic{color:var(--high)}.whysteps .wy-bad .ic{color:#c0392b}.whysteps .wy-na .ic{color:var(--low)}
+.verdict{border-radius:10px;padding:9px 12px;margin-top:10px;font-size:14px}.verdict.vbad{background:var(--med-bg);color:var(--med)}.verdict.vok{background:var(--high-bg);color:var(--high)}
+.setcheck ul{margin:6px 0;padding-left:0;list-style:none}.setcheck li{padding:5px 0;font-size:14px}.plan{margin:6px 0 0;padding-left:18px;font-size:13.5px;columns:2}.plan li{break-inside:avoid}
+@media (max-width:640px){.plan{columns:1}}
 .sugbox{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:10px 0;background:var(--bg)}
 .sugbox .sg{margin:6px 0}.sugbox ul{margin:4px 0 0;padding-left:18px;font-size:13.5px}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.chip{display:inline-flex;gap:5px;align-items:center;border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:13px;background:var(--panel);cursor:pointer}
@@ -194,7 +199,7 @@ body{padding-bottom:56px}
     <div class="filters jobsonly">
       <input type="search" id="q" placeholder="Search title, company, notes…">
       <select id="fit"><option value="">Any fit</option><option>High</option><option>Med</option><option>Low</option></select>
-      <select id="where"><option value="">Anywhere</option><option value="local">Near home</option><option value="remote">Remote</option></select>
+      <select id="where"><option value="">Anywhere</option><option value="local">Near home</option><option value="remote">Remote</option><option value="relocate">Nationwide (relocate)</option></select>
       <select id="sort"><option value="posted">Newest posted</option><option value="fit">Best fit</option><option value="closing">Closing soon</option><option value="company">Company</option></select>
       <label class="chk"><input type="checkbox" id="onlyNew"> New only</label>
     </div>
@@ -225,8 +230,9 @@ function daysAgo(d){
   const n = Math.round((Date.now() - new Date(d+'T12:00:00'))/864e5);
   return n<=0 ? 'today' : n===1 ? '1 day ago' : `${n} days ago`;
 }
-function isLocal(j){ return /,\s*FL/i.test(j.location||'') && !/remote/i.test(j.work_mode||''); }
+function isLocal(j){ return !!j.near_home; }   // decided by the server from your home town and towns list
 function isRemote(j){ return /remote/i.test((j.work_mode||'')+' '+(j.location||'')); }
+function isRelocate(j){ return /relocation required/i.test((j.work_mode||'')+' '+(j.location||'')); }
 function niceDay(d){ return new Date(d+'T12:00:00').toLocaleDateString([], {month:'short', day:'numeric'}); }
 function closingSoon(j){
   const m = /^\d{4}-\d{2}-\d{2}/.exec(j.closing_date||''); if(!m) return false;
@@ -258,7 +264,7 @@ function filterState(){
 function filtersOn(f){ return !!(f.q || f.fit || f.where || f.onlyNew); }
 function passFilters(j, f){
   return (!f.fit || j.fit===f.fit) &&
-    (!f.where || (f.where==='local' ? isLocal(j) : isRemote(j))) &&
+    (!f.where || (f.where==='local' ? isLocal(j) : f.where==='relocate' ? isRelocate(j) : isRemote(j))) &&
     (!f.onlyNew || !j.viewed) &&
     (!f.q || [j.title,j.company,j.location,j.notes,j.fit_reason,j.clearance].join(' ').toLowerCase().includes(f.q));
 }
@@ -291,7 +297,8 @@ function render(){
   const hidden = tabAll - a.length;
   const banner = on && hidden > 0 ? `<div class="fbar">Filters are hiding ${hidden} job${hidden>1?'s':''} in this tab. <button class="linkbtn" id="btnClear">Clear filters</button></div>` : '';
   $('#list').innerHTML = progressHTML(S.progress) + warningsHTML(S.progress) + setupHTML() + banner + (a.length ? a.map(card).join('') :
-    `<div class="empty">${!S.jobs.length ? emptyJobs() : S.tab==='watch' && tabAll===0 ? 'Nothing on your watchlist yet. Click ★ Interested on any job to keep it here permanently.' : 'No jobs match these filters.'}</div>`);
+    `<div class="empty">${!S.jobs.length ? emptyJobs() : S.tab==='watch' && tabAll===0 ? 'Nothing on your watchlist yet. Click ★ Interested on any job to keep it here permanently.' : 'No jobs match these filters.'}</div>`)
+    + (S.jobs.length ? `<div class="hint" style="text-align:center;margin:18px 0 6px">Missing a job you expected? <button class="linkbtn" data-act="j_why">Find out why</button></div>` : '');
   const cb = document.getElementById('btnClear'); if(cb) cb.onclick = clearFilters;
   const hs = document.getElementById('btnHideSetup'); if(hs) hs.onclick = () => { try{ localStorage.setItem('ns_hide_setup','1'); }catch{} render(); };
 }
@@ -575,6 +582,12 @@ async function onAct(t){
       const prov = (S.settings && S.settings.provider === 'ollama') ? 'ollama' : 'anthropic';
       await api('/search/save', {fit_provider: prov}); await api('/jobs/rate', {});
       toast('Rating turned on — rating your jobs now'); setTimeout(() => S.view==='search' ? renderSearch(true) : load(), 1500); return;
+    }
+    if(a==='j_why'){
+      setView('search');
+      const wait = setInterval(() => { const box = document.getElementById('q_why');
+        if(box){ clearInterval(wait); box.scrollIntoView({behavior:'smooth', block:'start'}); document.getElementById('w_link').focus(); } }, 150);
+      setTimeout(() => clearInterval(wait), 5000); return;
     }
     if(a==='j_firstrun'){
       t.disabled = true; await api('/search/run', {}); toast('Search started'); S.searching = true; render(); setTimeout(load, 4000); return;
@@ -898,6 +911,85 @@ async function onSettingsAct(a, t){
 /* ============================== search ============================== */
 const QDAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 const QTYPES = [['auto','Detect from link'],['workday','Workday'],['greenhouse','Greenhouse'],['lever','Lever'],['ashby','Ashby'],['smartrecruiters','SmartRecruiters'],['bamboohr','BambooHR'],['eightfold','Eightfold'],['sitemap','Career site (sitemap)'],['off','Off']];
+// ---- job-board plan, report card, settings check, "why didn't I see this job?"
+function planModes(p){
+  const m = (p&&p.modes)||[];
+  if(m.length===2) return '<b>near home</b> and <b>remotely</b> (from your Profile work modes)';
+  if(m.length===1) return `<b>${m[0]==='remote'?'remotely':'near home'}</b> only (from your Profile work modes)`;
+  return 'near home and/or remotely — but your Profile has no readable home town and no Remote work mode, so nothing can run';
+}
+function planHTML(p){
+  if(!p || !p.total) return '<div class="hint">No job-board searches yet — add jobs above.</div>';
+  const notes = (p.notes||[]).map(n=>`<div class="hint err">${esc(n)}</div>`).join('');
+  return `<details class="howto"><summary>What runs: ${p.total} search${p.total>1?'es':''} · ${p.rotating?`${p.per_run} per run, taking turns`:'all of them every run'} · about ${p.monthly} of ${p.budget} requests a month</summary>
+    ${p.rotating?`<div class="hint">There are more searches than your limit allows each run, so they take turns. <b>Bold</b> ones are in today's turn; each runs about every ${(p.total/p.per_run).toFixed(1)} runs. Fewer jobs to look for means each runs more often.</div>`:''}
+    <ul class="plan">${p.searches.map(s=>`<li>${p.rotating&&s.today?'<b>':''}${esc(s.q)}${p.rotating&&s.today?'</b>':''} <span class="hint">· ${esc(s.mode)}</span></li>`).join('')}</ul>${notes}</details>`;
+}
+function reportHTML(r){
+  if(!r || !r.runs || !(r.lines||[]).length) return '';
+  const cls = l => l==='warn'?'err':l==='ok'?'':'hint';
+  return `<div class="fld full"><span><b>How each search is doing</b> <span class="hint">· last ${r.runs} run${r.runs>1?'s':''}: jobs the boards returned, how many you kept, and how many were new</span></span>
+    <div style="overflow-x:auto"><table class="qt"><thead><tr><th>Job</th><th class="num">Runs</th><th class="num">Found</th><th class="num">Kept</th><th class="num">New</th><th>Status</th></tr></thead><tbody>
+    ${r.lines.map(l=>`<tr><td>${esc(l.phrase)}</td><td class="num">${l.runs}</td><td class="num">${l.returned}</td><td class="num">${l.kept}</td><td class="num">${l.new}</td><td><span class="${cls(l.level)}">${esc(l.status)}</span></td></tr>`).join('')}
+    </tbody></table></div>${r.lines.some(l=>l.level==='warn')?'<span class="hint">Replace searches that find nothing: edit the list above, or use ✨ Suggest jobs from my Profile.</span>':''}</div>`;
+}
+function fixBtn(f){
+  if(f.view) return `<button class="linkbtn" data-view="${esc(f.view)}">${esc(f.label)}</button>`;
+  return `<button class="btn sm" data-act="q_fix" data-fix="${esc(JSON.stringify(f))}">${esc(f.label)}</button>`;
+}
+function checkHTML(r){
+  const w = r.warnings||[], ex = r.examples||[], miss = ex.filter(e=>!e.ok);
+  const p = r.preview;
+  const exHTML = ex.length ? `<div style="margin-top:8px"><b>Titles you want</b> <span class="hint">(from ✨ Suggest titles, your starred jobs and High-fit jobs)</span>: ${ex.length-miss.length} of ${ex.length} pass your title rules.
+      ${miss.length?`<ul>${miss.map(e=>`<li>✗ <b>${esc(e.title)}</b> <span class="hint">(${esc(e.from)})</span> — ${esc(e.reason)}. ${(e.fixes||[]).map(fixBtn).join(' ')}</li>`).join('')}</ul>`:''}</div>`
+    : `<div class="hint" style="margin-top:8px">Tip: ✨ Suggest titles adds example titles, so this check can confirm they would be caught.</div>`;
+  const pv = p ? `<div style="margin-top:8px"><b>Compared with the last run</b> <span class="hint">(${esc(fmtTime(p.run_started))}; title step only — location and dates still apply)</span>: these title rules pass <b>${p.after}</b> titles (now ${p.before}).
+      ${p.gained.length?`<details><summary class="hint">${p.gained.length>=8?'8+':p.gained.length} more would pass</summary><ul>${p.gained.map(x=>`<li>+ ${esc(x)}</li>`).join('')}</ul></details>`:''}
+      ${p.lost.length?`<details><summary class="hint err">${p.lost.length>=8?'8+':p.lost.length} would no longer pass</summary><ul>${p.lost.map(x=>`<li>− ${esc(x)}</li>`).join('')}</ul></details>`:''}</div>` : '';
+  const ok = !w.some(x=>x.level==='warn') && !miss.length;
+  return `<section class="box setcheck"><h2>Settings check</h2>
+    ${ok?'<div class="verdict vok">✓ No problems found.</div>':''}
+    ${w.length?`<ul>${w.map(x=>`<li>${x.level==='warn'?'⚠️':'ℹ️'} ${esc(x.text)} ${x.fix?fixBtn(x.fix):''}</li>`).join('')}</ul>`:''}
+    ${exHTML}${pv}
+    <div class="row" style="margin-top:8px"><button class="linkbtn" data-act="q_checkclose">Close</button></div></section>`;
+}
+function whyHTML(r){
+  if(r.need) return `<div class="fbar" style="margin-top:10px">${esc(r.text)}</div>`;
+  const bad = r.steps.some(s=>s.ok===false);
+  return `<div class="verdict ${bad?'vbad':'vok'}">${esc(r.verdict)}</div>
+    <ol class="whysteps">${r.steps.map(s=>`<li class="${s.ok===true?'wy-ok':s.ok===false?'wy-bad':'wy-na'}"><span class="ic">${s.ok===true?'✓':s.ok===false?'✗':'–'}</span><b>${esc(s.name)}</b> <span>${esc(s.text)}</span> ${(s.fixes||[]).map(fixBtn).join(' ')}</li>`).join('')}</ol>`;
+}
+const FIX_BOX = {title_include:'q_inc', title_fields:'q_fld', title_exclude:'q_exc', local_places:'q_places', jsearch_what:'q_jwhat'};
+async function runCheck(){
+  const r = await api('/search/check', {draft: collectSearch()});
+  S.checkHTML = checkHTML(r); const o = $('#q_checkout'); if(o) o.innerHTML = S.checkHTML;
+}
+async function runWhy(){
+  const r = await api('/search/whynot', S.why);
+  if(r.title && !S.why.title){ S.why.title = r.title; const ti = $('#w_title'); if(ti) ti.value = r.title; }
+  S.whyHTML = whyHTML(r); const o = $('#w_out'); if(o) o.innerHTML = S.whyHTML;
+}
+async function applyFix(f){
+  if(f.op==='restore'){ await api('/jobs/update', {job_key:f.value, status:''}); toast('Moved back to the Inbox'); if(S.why) await runWhy(); return; }
+  if(f.op==='employer'){
+    $('#f_name').value = f.value; $('#f_site').value = '';
+    document.querySelector('.finder').scrollIntoView({behavior:'smooth', block:'center'});
+    await onSearchAct('q_find', document.querySelector('[data-act=q_find]')); return;
+  }
+  if(f.set==='usajobs_nationwide'){ $('#q_unat').value = f.value; $('#q_uagwrap').hidden = f.value!=='agencies'; }
+  if(f.list){
+    const box = $('#'+FIX_BOX[f.list]); if(!box) return;
+    let lines = box.value.split('\n').map(s=>s.trim()).filter(Boolean);
+    if(f.op==='add' && !lines.some(l=>l.toLowerCase()===f.value.toLowerCase())) lines.push(f.value);
+    if(f.op==='remove') lines = lines.filter(l=>l.toLowerCase()!==f.value.toLowerCase());
+    box.value = lines.join('\n');
+  }
+  await api('/search/save', collectSearch());
+  toast('Done — '+f.label.replace(/^./, c=>c.toLowerCase())+' (saved)');
+  if(S.why) await runWhy();
+  if(S.checkHTML) await runCheck();
+  S.qBoards = null; await renderSearch();
+}
 async function renderSearch(keep){
   const v = $('#view'); if(!keep) v.innerHTML = '<div class="empty"><span class="spin"></span></div>';
   const d = await api('/search'); S.search = d; const c = d.config, st = d.status;
@@ -933,6 +1025,17 @@ async function renderSearch(keep){
   }
   v.innerHTML = `<div class="page">
     ${daily}
+    <section class="box" id="q_why"><h2>Why didn't I see a job?</h2>
+      <div class="hint">Found a job elsewhere that isn't in your list? Paste its link and/or title. Each step of the search is checked to show where it drops out, with one-click fixes.</div>
+      <div class="grid2">
+        <label class="fld full">Job link<input id="w_link" placeholder="https://www.linkedin.com/jobs/view/…" value="${esc(S.why?.link||'')}"></label>
+        <label class="fld">Job title<input id="w_title" placeholder="e.g. AI Program Director" value="${esc(S.why?.title||'')}"></label>
+        <label class="fld">Company (optional)<input id="w_co" placeholder="e.g. BAE Systems" value="${esc(S.why?.company||'')}"></label>
+        <label class="fld">Location (optional)<input id="w_loc" placeholder="e.g. Nashua, NH — or Remote" value="${esc(S.why?.location||'')}"></label>
+      </div>
+      <div class="row"><button class="btn primary" data-act="q_why">Check this job</button>${S.whyHTML?'<button class="linkbtn" data-act="q_whyclear">Clear</button>':''}</div>
+      <div id="w_out">${S.whyHTML||''}</div>
+    </section>
     <section class="box"><h2>Schedule</h2>
       <div class="grid2">
         <label class="radio"><input type="checkbox" id="q_enabled" ${c.enabled?'checked':''}> Run automatically</label>
@@ -974,21 +1077,26 @@ async function renderSearch(keep){
       <div class="row" style="margin-top:8px"><button class="btn" data-act="q_addb">Add employer manually</button></div>
     </section>
     <section class="box"><h2>Job-board searches (JSearch)</h2>
-      <div class="hint">Each line is one search; {home} is your home town; lines with "remote" look for remote jobs anywhere. Each line uses one request per run.${c.jsearch_key_set?'':' <b>Add your JSearch key on Settings to turn this on.</b>'}</div>
+      <div class="hint">List the <b>jobs you want</b>, one per line — just the job, like <i>director of IT</i>. No town, no “remote”: the app searches each one
+        ${planModes(d.jsearch_plan)} and fits the searches into your monthly request limit.${c.jsearch_key_set?'':' <b>Add your JSearch key on Settings to turn this on.</b>'}</div>
       <div class="grid2">
-        <label class="fld full">Searches (one per line)<textarea id="q_jq" rows="7" placeholder="director information technology in {home}
-chief information security officer remote">${esc(c.jsearch_queries)}</textarea></label>
-        <div class="row full"><button class="btn" data-act="q_suggest" data-what="searches">✨ Suggest searches from my Profile</button><span class="hint" id="sg_searches"></span></div>
+        <label class="fld full">Jobs to look for (one per line)<textarea id="q_jwhat" rows="7" placeholder="director of IT&#10;chief information security officer&#10;program director">${esc(c.jsearch_what||'')}</textarea></label>
+        <div class="row full"><button class="btn" data-act="q_suggest" data-what="searches">✨ Suggest jobs from my Profile</button><span class="hint" id="sg_searches"></span></div>
+        <div class="fld full">${planHTML(d.jsearch_plan)}</div>
+        ${reportHTML(d.jsearch_report)}
         <label class="fld">Result pages per search (10 jobs each)<input id="q_jpages" type="number" min="1" max="5" value="${esc(c.jsearch_pages)}"></label>
+        <label class="fld">Requests your plan allows per month<input id="q_jbudget" type="number" min="10" value="${esc(c.jsearch_budget||200)}"><span class="hint">The free plan allows 200. Searches take turns if there are more than fit.</span></label>
+        <details class="howto full"><summary>Advanced: exact searches</summary>
+          <label class="fld">Run exactly as typed, one per line ({home} = your home town). Used in addition to the jobs above and counted in the same limit.<textarea id="q_jq" rows="3" placeholder="director it in Orlando, FL">${esc(c.jsearch_queries||'')}</textarea></label></details>
         <label class="fld full">Skip these re-posting sites (one per line)<textarea id="q_jskip" rows="4">${esc(c.jsearch_skip_sites)}</textarea>
           <span class="hint">Some sites copy jobs from elsewhere; their copies are often out of date and sometimes fake. Links to these sites are never used — a job is kept only if the employer's own link or a known board (LinkedIn, Indeed…) is available.</span></label>
-        <div class="fld"><span>Estimated use</span><b style="color:var(--ink)">about ${d.jsearch_monthly} requests a month</b><span class="hint">Free plans allow 200 a month.</span></div>
       </div></section>
     <section class="box"><h2>What counts as a match</h2>
       <div class="grid2">
         <label class="fld full">Start from a preset<select id="q_preset" data-act-change="q_preset"><option value="">Choose a level…</option>${Object.entries(d.title_presets||{}).map(([k,p])=>`<option value="${k}">${esc(p.label)}</option>`).join('')}</select>
           <span class="hint">Fills the list below; edit it any way you like. "*" means any title.</span></label>
         <div class="fld full"><div class="hint">A job is kept when its title has <b>a seniority word</b> <i>and</i> (if you list any) <b>a field word</b>, and <b>no skip word</b>. Your background shapes the fit rating afterwards.</div>
+          <div class="hint" style="margin-top:4px">Type plain words. Capitals, plurals and endings are handled for you (<i>program</i> also matches <i>programs</i>; <i>engineer</i> matches <i>engineering</i>), and short words like <i>IT</i> or <i>AI</i> only match as whole words. <i>Advanced: a line containing \ | ( ) is used as a pattern.</i></div>
           <span class="row" style="margin:6px 0 0"><button class="btn" type="button" data-act="q_sugtitles">✨ Suggest titles from my Profile &amp; military background</button><span class="hint" id="sg_titles"></span></span>
           <div id="sugTitles">${S.sugTitles ? sugTitlesHTML(S.sugTitles) : ''}</div></div>
         <label class="fld">Seniority words — title must contain one (one per line)<textarea id="q_inc" rows="10">${esc(c.title_include)}</textarea></label>
@@ -996,10 +1104,20 @@ chief information security officer remote">${esc(c.jsearch_queries)}</textarea><
         <label class="fld full">Skip titles containing (one per line)<textarea id="q_exc" rows="6">${esc(c.title_exclude)}</textarea></label>
         <label class="fld full">Towns that count as near home (one per line, "Town, ST")<textarea id="q_places" rows="6" placeholder="Type or paste towns, one per line, e.g.&#10;Melbourne, FL&#10;Palm Bay, FL&#10;Leave empty to use only your home town from the Profile">${esc(c.local_places)}</textarea></label>
         <div class="fld full" style="margin-top:-6px"><span class="row" style="margin:0 0 4px"><button class="btn" type="button" data-act="q_suggest" data-what="towns">✨ Suggest towns near my home</button><span class="hint" id="sg_towns"></span></span>
-          <span class="hint">You can also type or paste your own list. Remote jobs are kept too when your Profile work modes include Remote. Lines are matched as words; advanced users can use regular expressions. Click <b>Save search settings</b> when done.</span></div>
+          <span class="hint">You can also type or paste your own list. Remote jobs are kept too when your Profile work modes include Remote. Click <b>Save search settings</b> when done.</span></div>
         <label class="fld">Federal jobs: lowest grade to keep (GS)<input id="q_ugrade" type="number" min="1" max="15" value="${esc(c.usajobs_min_grade)}"></label>
+        <label class="fld">Federal jobs posted "nationwide"<select id="q_unat" data-act-change="q_unat">
+            <option value="off" ${(c.usajobs_nationwide||'off')==='off'?'selected':''}>Off — near home and remote only</option>
+            <option value="agencies" ${c.usajobs_nationwide==='agencies'?'selected':''}>Only agencies with offices near me</option>
+            <option value="all" ${c.usajobs_nationwide==='all'?'selected':''}>Any agency</option></select>
+          <span class="hint">Many senior federal jobs (often SES) list "Multiple locations" or "Anywhere in the U.S." and expect you to move to an assigned site. These are kept and marked <b>relocation required</b>; your grade, title, field and skip rules still apply.</span></label>
+        <label class="fld full" id="q_uagwrap" ${c.usajobs_nationwide==='agencies'?'':'hidden'}>Agencies with offices near you (one per line; matched against the agency name)
+          <textarea id="q_uag" rows="5" placeholder="e.g.&#10;NASA&#10;Space Force&#10;Air Force&#10;Navy">${esc(c.usajobs_agencies||'')}</textarea>
+          <span class="row" style="margin:4px 0 0"><button class="btn" type="button" data-act="q_suggest" data-what="agencies">✨ Suggest agencies near my home</button><span class="hint" id="sg_agencies"></span></span></label>
       </div></section>
-    <div class="row"><button class="btn primary" data-act="q_save">Save search settings</button></div>
+    <div class="row"><button class="btn primary" data-act="q_save">Save search settings</button>
+      <button class="btn" data-act="q_check">Check my settings</button><span class="hint">Saving also checks them.</span></div>
+    <div id="q_checkout">${S.checkHTML||''}</div>
   </div>`;
   bindRunlog(); pollSearch(st, d);
 }
@@ -1042,11 +1160,25 @@ function readBoards(){
 function collectSearch(){
   const days = [...document.querySelectorAll('[data-qday]')].filter(x=>x.checked).map(x=>x.dataset.qday).join(',');
   return {enabled:$('#q_enabled').checked, run_time:$('#q_time').value, days, timezone:$('#q_tz').value, max_age_days:$('#q_age').value,
-    usajobs_min_grade:$('#q_ugrade').value, title_include:$('#q_inc').value, title_fields:$('#q_fld').value, title_exclude:$('#q_exc').value,
-    local_places:$('#q_places').value, boards: readBoards(), jsearch_queries:$('#q_jq').value, jsearch_pages:$('#q_jpages').value, jsearch_skip_sites:$('#q_jskip').value};
+    usajobs_min_grade:$('#q_ugrade').value, usajobs_nationwide:$('#q_unat').value, usajobs_agencies:$('#q_uag').value, title_include:$('#q_inc').value, title_fields:$('#q_fld').value, title_exclude:$('#q_exc').value,
+    local_places:$('#q_places').value, boards: readBoards(), jsearch_what:$('#q_jwhat').value, jsearch_queries:$('#q_jq').value,
+    jsearch_budget:$('#q_jbudget').value, jsearch_pages:$('#q_jpages').value, jsearch_skip_sites:$('#q_jskip').value,
+    ...(S.titleExamples ? {title_examples: S.titleExamples} : {})};
 }
 async function onSearchAct(a, t){
-  if(a==='q_save'){ await api('/search/save', collectSearch()); toast('Search settings saved'); S.qBoards=null; renderSearch(); }
+  if(a==='q_save'){ await api('/search/save', collectSearch()); toast('Search settings saved'); await runCheck(); S.qBoards=null; await renderSearch();
+    $('#q_checkout')?.scrollIntoView({behavior:'smooth', block:'start'}); }
+  if(a==='q_check'){ t.disabled = true; try{ await runCheck(); $('#q_checkout').scrollIntoView({behavior:'smooth', block:'start'}); } finally{ t.disabled = false; } return; }
+  if(a==='q_checkclose'){ S.checkHTML = ''; $('#q_checkout').innerHTML = ''; return; }
+  if(a==='q_why'){
+    S.why = {link:$('#w_link').value.trim(), title:$('#w_title').value.trim(), company:$('#w_co').value.trim(), location:$('#w_loc').value.trim()};
+    if(!S.why.link && !S.why.title){ toast('Paste the job link or type its title'); return; }
+    t.disabled = true; $('#w_out').innerHTML = '<div class="hint"><span class="spin"></span> Checking…</div>';
+    try{ await runWhy(); } catch(e){ $('#w_out').innerHTML = `<div class="hint err">✗ ${esc(e.message||e)}</div>`; } finally{ t.disabled = false; }
+    return;
+  }
+  if(a==='q_whyclear'){ S.why = null; S.whyHTML = ''; renderSearch(); return; }
+  if(a==='q_fix'){ t.disabled = true; try{ await applyFix(JSON.parse(t.dataset.fix)); } finally{ t.disabled = false; } return; }
   if(a==='q_run'){ await api('/search/save', collectSearch()); await api('/search/run', {}); toast('Search started'); S.qBoards=null; renderSearch(true); }
   if(a==='q_one'){ await api('/search/save', collectSearch()); const b = S.qBoards[+t.dataset.i]; await api('/search/run', {only:[b.name]}); toast('Checking '+b.name); S.qBoards=null; renderSearch(true); }
   if(a==='q_sugtitles'){
@@ -1063,8 +1195,10 @@ async function onSearchAct(a, t){
       const cur = a==='q_sugadd' ? box.value.split('\n').map(s=>s.trim()).filter(Boolean) : [];
       box.value = [...new Set([...cur, ...words])].join('\n'); };
     put('q_inc', pick('levels')); put('q_fld', pick('fields')); put('q_exc', pick('skip'));
+    S.titleExamples = (S.sugTitles.example_titles||[]).join('\n');   // saved with the settings; the check tests them
     S.sugTitles = null; $('#sugTitles').innerHTML = ''; $('#sg_titles').textContent = '';
-    toast(a==='q_sugadd' ? 'Added — review the lists, then Save search settings' : 'Lists replaced — review, then Save search settings'); return;
+    toast(a==='q_sugadd' ? 'Added — review the lists, then Save search settings' : 'Lists replaced — review, then Save search settings');
+    runCheck().catch(()=>{}); return;
   }
   if(a==='q_sugclose'){ S.sugTitles = null; $('#sugTitles').innerHTML = ''; return; }
   if(a==='q_stop'){ await api('/search/stop', {}); toast('Stopping — jobs found so far are kept'); if(S.view==='search') renderSearch(true); else setTimeout(load, 1500); return; }
@@ -1090,8 +1224,9 @@ async function onSearchAct(a, t){
   if(a==='q_preset'){ const v = $('#q_preset').value; if(!v) return; const pr = S.search.title_presets[v];
     if($('#q_inc').value.trim() && !confirm('Replace the title list with "'+pr.label+'"?')) { $('#q_preset').value=''; return; }
     $('#q_inc').value = pr.include; toast('Title list filled in — click Save search settings'); }
+  if(a==='q_unat'){ $('#q_uagwrap').hidden = t.value!=='agencies'; return; }
   if(a==='q_suggest'){
-    const what = t.dataset.what, box = what==='towns' ? $('#q_places') : $('#q_jq'), out = $('#sg_'+what);
+    const what = t.dataset.what, box = what==='towns' ? $('#q_places') : what==='agencies' ? $('#q_uag') : $('#q_jwhat'), out = $('#sg_'+what);
     if(box.value.trim() && !confirm('Replace what is in this box with AI suggestions?')) return;
     t.disabled = true; out.className='hint'; out.innerHTML = '<span class="spin"></span> Asking the AI model…';
     try{ const r = await api('/search/suggest', {what}); box.value = r.text; out.textContent = '✓ '+r.detail; }
