@@ -185,7 +185,7 @@ def _part(p, keep_numbering=True, second_run=False, main=False):
         after_tab = [r for i, r in enumerate(body_runs) if i and ("\t" in body_runs[i - 1].text or r.text.startswith("\t"))]
         second = after_tab[0] if after_tab else body_runs[-1]
     out = {"ppr": _ppr_copy(p, keep_numbering), "rpr": _rpr_copy(first), "rpr2": _rpr_copy(second),
-           "prefix": prefix, "prefix_rpr": _rpr_copy(prun) if prefix else None, "label": None}
+           "prefix": prefix, "prefix_rpr": _rpr_copy(prun) if prefix else None, "label": None, "src": p._p}
     return out
 
 
@@ -359,3 +359,76 @@ def sanitize_bullets(doc):
             rpr.remove(rf)
         fixed += 1
     return fixed
+
+
+# ---------------------------------------------------------------- formatting report (no resume text)
+
+def _fmt(p):
+    runs = _text_runs(p)
+    r = runs[0] if runs else None
+    bits = []
+    ppr = _ppr(p)
+    if ppr is not None:
+        for tag, name in (("w:pBdr", "line"), ("w:shd", "shade"), ("w:numPr", "list"), ("w:tabs", "tabstop"),
+                          ("w:jc", "align")):
+            el = ppr.find(qn(tag))
+            if el is not None:
+                if tag == "w:pBdr":
+                    name += ":" + ",".join(c.tag.split("}")[1] for c in el)
+                if tag == "w:jc":
+                    name += ":" + (el.get(qn("w:val")) or "")
+                if tag == "w:shd":
+                    name += ":" + (el.get(qn("w:fill")) or "")
+                bits.append(name)
+    if _style_numbered(p) and "list" not in bits:
+        bits.append("list(style)")
+    pre, _ = _bullet_prefix(p)
+    if pre:
+        bits.append("typed-bullet")
+    if r is not None:
+        f = r.font
+        bits.append(f"font={f.name or '-'} {f.size.pt if f.size else '-'}pt")
+        for a in ("bold", "italic", "all_caps", "small_caps", "underline"):
+            if getattr(f, a):
+                bits.append(a)
+        if f.color is not None and f.color.type is not None and f.color.rgb is not None:
+            bits.append(f"color={f.color.rgb}")
+        if len(runs) > 1:
+            bits.append(f"{len(runs)} runs")
+        if any("\t" in x.text for x in runs):
+            bits.append("has-tab")
+    for el in p._p.iter(qn("w:br")):
+        bits.append("line-break")
+        break
+    return " ".join(bits)
+
+
+def report(path):
+    """Paragraph-by-paragraph formatting and what each was read as. Shows section headings; hides other text."""
+    from docx import Document
+    doc = Document(path)
+    look, why = learn(doc)
+    out = [f"file: {path.rsplit('/', 1)[-1]}", f"result: {'COPY TEMPLATE' if look else 'BUILT-IN (' + why + ')'}"]
+    used = {}
+    if look:
+        out.append("sections: " + " > ".join(k for k, _ in look.sections))
+        out.append("found: " + ", ".join(look.found()))
+        for name, part in look.parts.items():
+            if part.get("src") is not None:
+                used.setdefault(part["src"], set()).add(name)
+    for i, p in enumerate(doc.paragraphs):
+        t = " ".join(p.text.split())
+        if not t:
+            continue
+        shown = t if (section_kind(t) and len(t) <= 50) else f"[{len(t.split())} words]"
+        role = ",".join(sorted(used.get(p._p, []))) or "-"
+        style = p.style.name if p.style is not None else "-"
+        out.append(f"{i:3d} {role:<22} style={style} | {_fmt(p)} | {shown}")
+    return "\n".join(out)
+
+
+if __name__ == "__main__":
+    import sys
+    for a in sys.argv[1:]:
+        print(report(a))
+        print()
