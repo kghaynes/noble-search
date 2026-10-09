@@ -146,8 +146,10 @@ def repair_json(s, max_fixes=25):
             p = e.pos
             if e.msg.startswith("Expecting ',' delimiter"):
                 s = s[:p] + "," + s[p:]                       # "a": 1 "b": 2  ->  "a": 1, "b": 2
-            elif e.msg.startswith(("Expecting property name", "Expecting value")) and p < len(s) and s[p] in "]}":
-                q = p - 1
+            elif e.msg.startswith("Illegal trailing comma") or (
+                    e.msg.startswith(("Expecting property name", "Expecting value")) and p < len(s) and s[p] in "]}"):
+                # Python 3.13+ says "Illegal trailing comma" and points at the comma; older versions point after it
+                q = p if p < len(s) and s[p] == "," else p - 1
                 while q >= 0 and s[q] in " \t\r\n":
                     q -= 1
                 if q < 0 or s[q] != ",":
