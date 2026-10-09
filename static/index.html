@@ -492,6 +492,7 @@ function panelHTML(key){
       <button class="btn" data-act="gen" data-kind="application" data-k="${esc(key)}" ${busy?'disabled':''}>Draft application text</button>
       <span class="hint">Local model takes 1–3 min each; you can keep working.</span>
     </div>
+    <div class="hint">For best results use the Claude API. Always edit your resume before sending.</div>
     ${ds===undefined ? '<div class="hint"><span class="spin"></span> Loading…</div>' :
       ds.length ? ds.map(d => verHTML(key, d)).join('') : '<div class="hint">No drafts yet for this job.</div>'}`;
 }
