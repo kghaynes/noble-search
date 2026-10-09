@@ -245,19 +245,20 @@ def contact_parts(profile):
                         profile.get("linkedin")) if x]
 
 
-def to_plain_text(c, profile):
+def to_plain_text(c, profile, names=None):
+    n = dict(DEFAULT_NAMES, **(names or {}))
     L = [profile.get("full_name", ""), " | ".join(contact_parts(profile)), ""]
     if c["headline"]:
         L.append(c["headline"])
     if c["summary"]:
         L.append(c["summary"])
     L += [f"- {h}" for h in c["highlights"]]
-    L += ["", "CORE COMPETENCIES AND SKILLS"]
+    L += ["", n["competencies"].upper()]
     if c["credentials_line"]:
         L.append(c["credentials_line"])
     if c["competencies"]:
         L.append(" | ".join(c["competencies"]))
-    L += ["", "PROFESSIONAL EXPERIENCE"]
+    L += ["", n["experience"].upper()]
     for e in c["experience"]:
         L.append(f"{e['org']}    {e['dates']}".rstrip())
         for r in e["roles"]:
@@ -269,19 +270,19 @@ def to_plain_text(c, profile):
             L += [f"- {b}" for b in r["bullets"]]
         L.append("")
     if c["additional_roles"]:
-        L.append("Additional Executive Leadership:")
+        L.append(n["additional"].rstrip(":") + ":")
         for r in c["additional_roles"]:
             L.append(r["title"] + (f" | {r['dates']}" if r["dates"] else ""))
             L += [f"- {b}" for b in r["bullets"]]
         L.append("")
-    L.append("EDUCATION & CERTIFICATIONS")
+    L.append(n["education"].upper())
     L += c["education"]
     if c["certifications"]:
         L.append(c["certifications"])
     if c["recognitions"]:
-        L += ["", "RECOGNITIONS", c["recognitions"]]
+        L += ["", n["recognitions"].upper(), c["recognitions"]]
     if c["technology_skills"]:
-        L += ["", "TECHNOLOGY SKILLS", c["technology_skills"]]
+        L += ["", n["tech"].upper(), c["technology_skills"]]
     return "\n".join(L).strip() + "\n"
 
 
@@ -429,15 +430,9 @@ def _bullet(doc, num_id, text, after=0, prefix=None, italic=False, shaded=False)
     return p
 
 
-def build_docx(c, profile, template_path, out_path):
-    """Build the resume .docx. Uses the candidate's own .docx for page setup, fonts, footers and styles."""
-    if template_path:
-        doc = Document(template_path)
-        body = doc.element.body
-        for child in list(body):
-            if child.tag != qn("w:sectPr"):
-                body.remove(child)
-    else:
+def _build_builtin(c, profile, doc, out_path):
+    """The built-in design (used when there is no template, or it can't be copied)."""
+    if doc is None:
         doc = Document()
         s = doc.sections[0]
         from docx.shared import Inches
@@ -545,6 +540,229 @@ def build_docx(c, profile, template_path, out_path):
     doc.save(out_path)
 
 
+
+DEFAULT_NAMES = {"summary": "Summary", "competencies": "Core Competencies and Skills",
+                 "experience": "Professional Experience", "additional": "Additional Executive Leadership",
+                 "education": "Education & Certifications", "certifications": "Certifications",
+                 "recognitions": "Recognitions", "tech": "Technology Skills"}
+
+
+def _clear_body(doc):
+    body = doc.element.body
+    for child in list(body):
+        if child.tag != qn("w:sectPr"):
+            body.remove(child)
+
+
+def build_docx(c, profile, template_path, out_path):
+    """Build the resume .docx.
+
+    With a template: copy its look (headings, lines, shading, bullets, job lines, fonts) and its section
+    names and order. If the template can't be copied cleanly, use the built-in design and say why.
+    Returns {"mode": "template"|"built-in", "reason": str, "names": {kind: heading}}.
+    """
+    import template_look as tl
+    if not template_path:
+        _build_builtin(c, profile, None, out_path)
+        return {"mode": "built-in", "reason": "no resume is tagged as the template", "names": dict(DEFAULT_NAMES)}
+    doc = Document(template_path)
+    look, why = tl.learn(doc)
+    if look is None:
+        doc = Document(template_path)
+        _clear_body(doc)
+        _build_builtin(c, profile, doc, out_path)
+        return {"mode": "built-in", "reason": why, "names": dict(DEFAULT_NAMES)}
+    tl.sanitize_bullets(doc)
+    _clear_body(doc)
+    names = _build_from_look(c, profile, doc, look)
+    doc.core_properties.title = f"{profile.get('full_name', '')} - Resume".strip(" -")
+    doc.core_properties.author = profile.get("full_name", "")
+    doc.save(out_path)
+    return {"mode": "template", "reason": "", "names": names}
+
+
+def _is_bullet_part(part):
+    ppr = part.get("ppr")
+    return bool(part.get("prefix")) or (ppr is not None and ppr.find(qn("w:numPr")) is not None)
+
+
+def _has_tab_stop(part):
+    ppr = part.get("ppr")
+    return ppr is not None and ppr.find(qn("w:tabs")) is not None
+
+
+def _emit(doc, part, segments, usable=None):
+    """One paragraph with the part's paragraph settings; segments = [(text, rpr_key, extra)]."""
+    p = doc.add_paragraph()
+    old = p._p.find(qn("w:pPr"))
+    if old is not None:
+        p._p.remove(old)
+    if part.get("ppr") is not None:
+        p._p.insert(0, copy.deepcopy(part["ppr"]))
+    if usable and any("\t" in s[0] for s in segments) and not _has_tab_stop(part):
+        _right_tab(p, usable)
+
+    def add(text, rpr, extra=None):
+        r = p.add_run(text)
+        if rpr is not None:
+            r._r.insert(0, copy.deepcopy(rpr))
+        for k, v in (extra or {}).items():
+            setattr(r, k, v)
+    if part.get("prefix"):
+        add(part["prefix"], part.get("prefix_rpr"))
+    for seg in segments:
+        text, key = seg[0], seg[1]
+        extra = seg[2] if len(seg) > 2 else None
+        if not isinstance(key, str):          # a text-settings element given directly
+            add(text, key, extra)
+        else:
+            add(text, part.get(key) if part.get(key) is not None else part.get("rpr"), extra)
+    return p
+
+
+def _build_from_look(c, profile, doc, look):
+    P = look.parts
+    sec = doc.sections[0]
+    usable = int((sec.page_width - sec.left_margin - sec.right_margin) / 635)  # EMU -> twips
+    body = P["body"]
+    names = dict(DEFAULT_NAMES)
+    for kind, text in look.sections:
+        if kind in names and text:
+            names[kind] = text
+    contact = " | ".join(contact_parts(profile))
+    name = profile.get("full_name") or "Your Name"
+
+    # name + contact, always in the body (hiring software often skips page headers)
+    if look.name_with_contact or "contact" not in P:
+        _emit(doc, P.get("name", body), [(name, "rpr"), ("\t" + contact, "rpr2")], usable)
+    else:
+        _emit(doc, P.get("name", body), [(name, "rpr")])
+        _emit(doc, P["contact"], [(contact, "rpr")])
+
+    def heading(text):
+        _emit(doc, P["heading"], [(text, "rpr")])
+
+    def para(part, text, **extra):
+        _emit(doc, part, [(text, "rpr", extra or None)], usable)
+
+    def summary_block():
+        if c["headline"]:
+            if "headline" in P:
+                para(P["headline"], c["headline"])
+            else:
+                para(body, c["headline"], bold=True)
+        if c["summary"]:
+            para(P.get("summary", body), c["summary"])
+        for h in c["highlights"]:
+            para(P["highlight"], h)
+
+    def competencies_block():
+        part = P.get("sec_competencies", body)
+        if c["credentials_line"]:
+            para(part, c["credentials_line"], bold=True)
+        if not c["competencies"]:
+            return
+        if _is_bullet_part(part):
+            items = c["competencies"]
+            for i in range(0, len(items), 3):
+                para(part, " | ".join(items[i:i + 3]))
+        else:
+            para(part, " | ".join(c["competencies"]))
+
+    def additional_block(label):
+        if not c["additional_roles"]:
+            return
+        lab = P.get("additional_label")
+        if lab is not None:      # the template's own "Additional ..." line, in its own look
+            para(lab, lab.get("text") or label or (names["additional"] + ":"))
+        elif label is not None:
+            heading(label)
+        else:
+            para(P.get("org", body), names["additional"] + ":", bold=True)
+        rp = P.get("additional_role") or P.get("title") or body
+        for r in c["additional_roles"]:
+            if r["dates"]:
+                tab = _has_tab_stop(rp)
+                _emit(doc, rp, [(r["title"], "rpr"), (("\t" if tab else " | ") + r["dates"], "rpr2")], usable)
+            else:
+                para(rp, r["title"])
+            for b in r["bullets"]:
+                para(P["bullet"], b)
+
+    def experience_block(with_additional):
+        orgp = P.get("org", body)
+        titlep = P.get("title", orgp)
+        for e in c["experience"]:
+            if e["org"] or e["dates"]:
+                segs = [(e["org"], "rpr")]
+                if e["dates"]:
+                    segs.append(("\t" + e["dates"], "rpr2"))
+                _emit(doc, orgp, segs, usable)
+            for r in e["roles"]:
+                if r["title"]:
+                    segs = [(r["title"], "rpr")]
+                    if r["dates"]:
+                        segs.append((("\t" if _has_tab_stop(titlep) else " | ") + r["dates"], "rpr2"))
+                    _emit(doc, titlep, segs, usable)
+                if r["summary"]:
+                    if "scope" in P:
+                        para(P["scope"], r["summary"])
+                    else:
+                        para(body, r["summary"], italic=True)
+                if r["flagship"]:
+                    fp = P.get("flagship")
+                    if fp and fp.get("label"):
+                        _emit(doc, fp, [(fp["label"][0], fp["label"][1]), (r["flagship"], "rpr")])
+                    else:
+                        para(fp or P["bullet"], r["flagship"])
+                for b in r["bullets"]:
+                    para(P["bullet"], b)
+        if with_additional:
+            additional_block(None)
+
+    def lines_block(kind, lines):
+        part = P.get("sec_" + kind, body)
+        for ln in lines:
+            if ln:
+                para(part, ln)
+
+    kinds = [k for k, _ in look.sections]
+    if "summary" not in kinds:
+        summary_block()
+    done = set()
+    writers = {
+        "summary": lambda t: summary_block(),
+        "competencies": lambda t: competencies_block(),
+        "experience": lambda t: experience_block("additional" not in kinds),
+        "additional": lambda t: additional_block(t),
+        "education": lambda t: lines_block("education", c["education"] + ([] if "certifications" in kinds
+                                                                          else [c["certifications"]])),
+        "certifications": lambda t: lines_block("certifications", [c["certifications"]]),
+        "recognitions": lambda t: lines_block("recognitions", [c["recognitions"]]),
+        "tech": lambda t: lines_block("tech", [c["technology_skills"]]),
+    }
+    has = {"summary": bool(c["headline"] or c["summary"] or c["highlights"]),
+           "competencies": bool(c["competencies"] or c["credentials_line"]), "experience": True,
+           "additional": bool(c["additional_roles"]), "education": bool(c["education"] or c["certifications"]),
+           "certifications": bool(c["certifications"]), "recognitions": bool(c["recognitions"]),
+           "tech": bool(c["technology_skills"])}
+    for kind, text in look.sections:
+        if kind not in writers or kind in done or not has[kind]:
+            continue
+        done.add(kind)
+        if kind != "additional":
+            heading(text)
+        writers[kind](text)
+    # content the template has no section for: add it with the template's heading look
+    for kind in ("competencies", "experience", "education", "recognitions", "tech"):
+        if kind not in done and has[kind] and not (kind == "education" and "certifications" in done
+                                                    and not c["education"]):
+            done.add(kind)
+            heading(names[kind])
+            writers[kind](names[kind])
+    return names
+
+
 # ---------------------------------------------------------------- ATS self-check
 
 _BAD_FONTS = ("wingdings", "symbol", "webdings", "zapf")
@@ -567,8 +785,10 @@ def ats_check(docx_path, profile):
     for label, key in (("Email", "email"), ("Phone", "phone")):
         v = profile.get(key, "")
         add(f"{label} readable in body text", bool(v) and v in text, v or "not set in Profile")
-    for h in ("Professional Experience", "Education"):
-        add(f"Standard section heading: {h}", h.lower() in text.lower())
+    import template_look as tl
+    kinds = {tl.section_kind(" ".join(p.text.split())) for p in d.paragraphs if p.text.strip()}
+    for h, kind in (("Experience", "experience"), ("Education", "education")):
+        add(f"Standard section heading: {h}", kind in kinds)
     n_tables = len(body.findall(qn("w:tbl")))
     n_txbx = len(body.xpath(".//w:txbxContent"))
     n_draw = len(body.xpath(".//w:drawing")) + len(body.xpath(".//w:pict"))

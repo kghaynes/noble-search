@@ -252,9 +252,16 @@ def _run_resume(did, r, settings):
     facts = resume.fact_check(content, source_text)
     safe_company = "".join(ch for ch in (job.get("company") or "job") if ch.isalnum())[:30]
     out = os.path.join(DRAFT_DIR, f"draft-{did}-{safe_company}.docx")
-    resume.build_docx(content, profile, ps.template_path(), out)
+    layout = resume.build_docx(content, profile, ps.template_path(), out) or {}
     ats = resume.ats_check(out, profile)
-    text = resume.to_plain_text(content, profile)
+    if layout.get("mode") == "template":
+        ats["checks"].insert(0, {"name": "Layout copied from your template resume", "ok": True, "level": "ok",
+                                 "detail": "headings, lines, bullets and job lines match it"})
+    else:
+        ats["checks"].insert(0, {"name": "Layout copied from your template resume", "ok": False, "level": "warn",
+                                 "detail": "Used the built-in design because " + (layout.get("reason") or "the template could not be read")})
+        applog.info("drafts", f"resume draft #{did}: built-in layout ({layout.get('reason')})")
+    text = resume.to_plain_text(content, profile, layout.get("names"))
     kw = _keywords(r, settings, text, source_text)
     _update(did, status="done", finished=_now(), provider=provider, model=model,
             content_json=json.dumps(content), text=text,

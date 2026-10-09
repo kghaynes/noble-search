@@ -706,7 +706,7 @@ async function renderProfile(){
       <div class="grid2">${PF.map(([k,l])=>f(k,l)).join('')}</div>
       <div class="row" style="margin-top:12px"><button class="btn primary" data-act="p_save">Save</button></div></section>
 
-    <section class="box"><h2>Resumes</h2><div class="hint">Upload your current resume(s) as .docx. The one marked <b>Layout template</b> sets the fonts, margins and footer of every draft.</div>
+    <section class="box"><h2>Resumes</h2><div class="hint">Upload your current resume(s) as .docx. The one marked <b>Layout template</b> sets the look of every draft: headings, lines, bullets, job-title lines, fonts, margins, and its section names and order.</div>
       <div class="rlist">${d.resumes.length ? d.resumes.map(r=>`<div class="ritem"><span class="nm">${esc(r.name)}</span><span class="hint">${(r.size/1024).toFixed(0)} KB · ${fmtTime(r.uploaded)}</span>
           <label class="radio"><input type="radio" name="tpl" data-act="p_tpl" data-name="${esc(r.name)}" ${r.is_template?'checked':''}> Layout template</label>
           <button class="linkbtn" data-act="p_delres" data-name="${esc(r.name)}">Remove</button></div>`).join('') : '<div class="hint">No resumes uploaded yet.</div>'}</div>
