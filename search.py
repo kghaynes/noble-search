@@ -16,6 +16,7 @@ try:
 except ImportError:  # pragma: no cover
     ZoneInfo = None
 
+import applog
 import fit
 import notify
 import profile_store as ps
@@ -369,13 +370,18 @@ def run(trigger="manual", listing_fields=None, only=None):
                 break
             _state.update(current=name, step=i)
             ctx.source, ctx._cur = name, None
-            save(*step())
+            rows_st = step()
+            for err in (rows_st[1].get("errors") or [])[:3]:
+                applog.warn("search", f"{name}: {err}")
+            save(*rows_st)
         save_titles(run_id, ctx.seen)
         stopped = sources.STOP.is_set()
         bad = sum(1 for d in detail if not d.get("ok"))
         stat = "stopped" if stopped else "done" if not bad else ("partial" if bad < len(detail) else "failed")
         with lock, db_fn() as conn:
             conn.execute("UPDATE search_runs SET status=?, finished=? WHERE id=?", (stat, _now(), run_id))
+        applog.info("search", f"{trigger.title()} run {stat}: {total_found} matching, {total_added} new, {total_updated} updated"
+                              + (f", {bad} source(s) failed" if bad else ""))
         if stopped:   # keep what was found and rate it, but no summary email for a stopped run
             if cfg.get("fit_provider", "anthropic") != "off" and new_keys:
                 try:
@@ -451,7 +457,7 @@ def _safe_run(trigger, listing_fields, only):
     try:
         run(trigger, listing_fields, only)
     except Exception as e:  # noqa: BLE001
-        print(f"search run failed: {e}", flush=True)
+        applog.error("search", f"Search run failed: {e}")
 
 
 def next_run(cfg=None):
@@ -494,5 +500,5 @@ def scheduler_loop(listing_fields):
                     if not _state["running"]:
                         _safe_run("scheduled", listing_fields, None)
         except Exception as e:  # noqa: BLE001
-            print(f"scheduler: {e}", flush=True)
+            applog.error("scheduler", str(e))
         time.sleep(30)

@@ -260,7 +260,7 @@ On the **Profile** page, fill in these fields, then click **Save**:
 
 1. **Upload your resume (.docx).**
    - You can upload more than one, for example a federal and a corporate version.
-   - Pick one as the **layout template**. New drafts copy its fonts, margins and page setup.
+   - Pick one as the **layout template**. New drafts copy its look — headings and lines, bullets, job-title lines, fonts, margins — and its section names and order. (Templates built with tables, text boxes or two columns fall back to a simple built-in design, since hiring software reads those poorly too.)
 2. **Write your career inventory.** This is the most important step. List everything you've done, role by role:
    - title, organization and dates (MM/YYYY)
    - people led, budget, number of sites or users

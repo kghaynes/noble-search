@@ -125,8 +125,36 @@ def parse_json(text):
     start = t.find("{")
     end = t.rfind("}")
     if start >= 0 and end > start:
+        body = t[start:end + 1]
         try:
-            return json.loads(t[start:end + 1])
+            return json.loads(body)
         except json.JSONDecodeError as e:
+            fixed = repair_json(body)
+            if fixed is not None:
+                return fixed
             raise LLMError(f"Model returned invalid JSON: {e}") from None
     raise LLMError("Model did not return JSON")
+
+
+def repair_json(s, max_fixes=25):
+    """Fix the slips models make in long JSON — a missing comma between items, or a trailing comma —
+    using the parser's own error position. Returns the parsed object, or None if it can't be fixed."""
+    for _ in range(max_fixes):
+        try:
+            return json.loads(s)
+        except json.JSONDecodeError as e:
+            p = e.pos
+            if e.msg.startswith("Expecting ',' delimiter"):
+                s = s[:p] + "," + s[p:]                       # "a": 1 "b": 2  ->  "a": 1, "b": 2
+            elif e.msg.startswith("Illegal trailing comma") or (
+                    e.msg.startswith(("Expecting property name", "Expecting value")) and p < len(s) and s[p] in "]}"):
+                # Python 3.13+ says "Illegal trailing comma" and points at the comma; older versions point after it
+                q = p if p < len(s) and s[p] == "," else p - 1
+                while q >= 0 and s[q] in " \t\r\n":
+                    q -= 1
+                if q < 0 or s[q] != ",":
+                    return None
+                s = s[:q] + s[q + 1:]                        # [1, 2, ]  ->  [1, 2]
+            else:
+                return None
+    return None

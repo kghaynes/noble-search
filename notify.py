@@ -5,6 +5,8 @@ ratings and gaps. Stdlib only (smtplib).
 """
 import html
 import json
+
+import applog
 import smtplib
 import ssl
 import threading
@@ -365,6 +367,10 @@ def send_for_run(run_id, cfg):
         conn.execute("UPDATE search_runs SET emailed=? WHERE id=?", (("failed: " + " | ".join(errors))[:400] if errors else stamp, run_id))
     _state.update(last_sent=None if errors else stamp, last_error=" | ".join(errors) or None)
     if errors:
+        applog.error("email", "Couldn't send: " + " | ".join(errors))
+    else:
+        applog.info("email", f"Summary sent ({counts.get('new', 0)} new)" if isinstance(counts, dict) else "Summary sent")
+    if errors:
         raise ValueError(" | ".join(errors))
     return subject
 
@@ -411,5 +417,5 @@ def after_search(run_id, trigger, cfg):
                 send_for_run(run_id, cfg)
         except Exception as ex:  # noqa: BLE001
             _state["last_error"] = str(ex)[:400]
-            print(f"notify: {ex}", flush=True)
+            applog.error("email", f"Morning email/alert failed: {ex}")
     threading.Thread(target=go, daemon=True).start()

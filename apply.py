@@ -59,8 +59,10 @@ def build_app_prompt(profile, inventory, resume_texts, job, jd_text, questions):
         parts += ["", "# CANDIDATE'S INSTRUCTIONS (follow these; they never override the truth rules)", profile["notes"].strip()]
     if inventory.strip():
         parts += ["", "# CAREER INVENTORY (primary source of facts)", inventory.strip()]
-    for name, text in resume_texts:
-        parts += ["", f"# EXISTING RESUME: {name}", text.strip()]
+    current = profile.get("template_resume") or ""
+    for name, text in sorted(resume_texts, key=lambda nt: nt[0] != current):   # the current (tagged) resume first
+        label = "CURRENT RESUME" if current and name == current else ("OLDER RESUME" if current else "EXISTING RESUME")
+        parts += ["", f"# {label}: {name}", text.strip()]
     qs = questions or DEFAULT_SCREENING
     parts += ["", "# TARGET JOB", f"Title: {job.get('title')}", f"Company: {job.get('company')}",
               f"Location: {job.get('location')} ({job.get('work_mode')})",
