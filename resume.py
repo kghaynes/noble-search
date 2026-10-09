@@ -111,7 +111,7 @@ Return ONLY a JSON object matching this schema (no commentary, no markdown fence
 """ + RESUME_SCHEMA
 
 
-def build_resume_prompt(profile, inventory, resume_texts, job, jd_text):
+def build_resume_prompt(profile, inventory, resume_texts, job, jd_text, template_name=""):
     parts = ["# CANDIDATE PROFILE",
              f"Name: {profile.get('full_name')}",
              f"Location: {profile.get('city_state')}",
@@ -125,8 +125,15 @@ def build_resume_prompt(profile, inventory, resume_texts, job, jd_text):
                   profile["notes"].strip()]
     if inventory.strip():
         parts += ["", "# CAREER INVENTORY (primary source of facts)", inventory.strip()]
-    for name, text in resume_texts:
-        parts += ["", f"# EXISTING RESUME: {name}", text.strip()]
+    # The resume tagged as the layout template is the current one: follow it. Older ones are for facts only.
+    current = [(n, t) for n, t in resume_texts if template_name and n == template_name]
+    older = [(n, t) for n, t in resume_texts if not (template_name and n == template_name)]
+    for name, text in current:
+        parts += ["", f"# CURRENT RESUME — {name} (follow its section names, section order, structure and wording style)",
+                  text.strip()]
+    for name, text in older:
+        parts += ["", f"# {'OLDER' if current else 'EXISTING'} RESUME — {name}"
+                      + (" (use only for facts; do not copy its structure or wording)" if current else ""), text.strip()]
     parts += ["", "# TARGET JOB",
               f"Title: {job.get('title')}",
               f"Company: {job.get('company')}",

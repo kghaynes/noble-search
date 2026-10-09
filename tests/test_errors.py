@@ -65,5 +65,16 @@ class Log(unittest.TestCase):
         self.assertTrue(lines[-1].endswith("[search] Manual run done: 3 new"))
 
 
+class CurrentResume(unittest.TestCase):
+    def test_tagged_resume_is_followed(self):
+        import resume
+        _, user = resume.build_resume_prompt({"full_name": "Pat"}, "", [("old.docx", "OLD TEXT"), ("new.docx", "NEW TEXT")],
+                                             {"title": "Director"}, "jd", template_name="new.docx")
+        self.assertLess(user.index("NEW TEXT"), user.index("OLD TEXT"))
+        self.assertIn("# CURRENT RESUME — new.docx (follow its section names", user)
+        self.assertIn("# OLDER RESUME — old.docx (use only for facts", user)
+        _, user = resume.build_resume_prompt({"full_name": "Pat"}, "", [("a.docx", "A")], {"title": "D"}, "jd")
+        self.assertIn("# EXISTING RESUME — a.docx", user)
+
 if __name__ == "__main__":
     unittest.main()

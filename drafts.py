@@ -243,7 +243,7 @@ def _run_resume(did, r, settings):
     inv, texts = _sources()
     if not inv.strip() and not texts:
         raise RuntimeError("Your Profile is empty. Upload a resume and/or fill in the career inventory first.")
-    system, user = resume.build_resume_prompt(profile, inv, texts, job, r["jd_text"])
+    system, user = resume.build_resume_prompt(profile, inv, texts, job, r["jd_text"], profile.get("template_resume") or "")
     data, provider, model = _complete_json(settings, system, user, r["provider"], "resume", did)
     content = resume.normalize_resume(data)
     if not content["experience"]:
