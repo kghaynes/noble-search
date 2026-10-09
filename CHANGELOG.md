@@ -4,6 +4,9 @@ All notable changes are listed here. Versions follow [semantic versioning](https
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-10-09
+Drafts that look like your own resume, a problems log, and no more drafts failing on a stray comma.
+
 ### Added
 - **Problems log** (Settings → Problems log): errors and notable events in one place — sources that failed, jobs that couldn't be rated, drafts that failed, email problems, and each search's result. Saved in your data folder as `logs/noble-search.log` (rotates at 1 MB), also shown by `docker compose logs`. Keys and passwords are never written to it.
 - **Drafts look like your template resume.** The resume marked **Layout template** now sets the whole look of every draft, not just fonts and margins: section headings (lines, shading, color, caps), the name and contact line, employer and job-title lines, the scope line, bullets (including a labeled bullet like *Key Accomplishment:*), and the section names and their order. It also follows the template's shape: one line per job when the template does that (written in the template's own order and separators), a headline above the first heading, an unnamed bullets section such as *Selected Key Results*, bullets-only *Additional* sections, and as many Education lines as the template uses. No section is added that the template doesn't have (technology skills join the skills list). Symbol-font bullets (Wingdings arrows and squares) become a plain • so hiring software reads them. Templates with tables, text boxes or two columns can't be copied cleanly and use the built-in design; the draft's check list says which was used and why.
@@ -85,7 +88,8 @@ First public release.
 - Morning email and ntfy push; Draft Library; 30-day retention with a permanent watchlist.
 - Getting-started checklist; ✨ Suggest towns and searches; Claude API by default with optional local Ollama.
 
-[Unreleased]: https://github.com/kghaynes/noble-search/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/kghaynes/noble-search/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/kghaynes/noble-search/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/kghaynes/noble-search/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/kghaynes/noble-search/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/kghaynes/noble-search/compare/v0.1.1...v0.2.0
