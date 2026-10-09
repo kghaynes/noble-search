@@ -24,6 +24,7 @@ import fit
 import llm
 import profile_store as ps
 import resume
+import applog
 import discover
 import insight
 import search
@@ -87,7 +88,7 @@ def housekeeping_loop():
         try:
             purge_expired()
         except Exception as exc:  # noqa: BLE001
-            print(f"purge: {exc}", flush=True)
+            applog.error("cleanup", str(exc))
 
 
 def ref_date(r):
@@ -123,7 +124,7 @@ def purge_expired():
     if gone:
         with _db_lock, db() as conn:
             conn.executemany("DELETE FROM jobs WHERE job_key=?", [(k,) for k in gone])
-        print(f"purge: removed {len(gone)} expired jobs and their drafts", flush=True)
+        applog.info("cleanup", f"Removed {len(gone)} expired jobs and their drafts")
     return len(gone)
 
 
@@ -342,6 +343,16 @@ class Handler(BaseHTTPRequestHandler):
                                     "home_read": sources.home_town(ps.get_profile()),
                                     "inventory": ps.get_inventory(),
                                     "inventory_drafts": drafts.list_for(drafts.PROFILE_KEY)[:3]})
+        if path == "/settings/log":
+            return self._json(200, {"lines": applog.tail(int((qs.get("n") or ["200"])[0] or 200))})
+        if path == "/settings/log.txt":
+            data = "\n".join(applog.tail(2000)).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Disposition", "attachment; filename=noble-search-log.txt")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            return self.wfile.write(data)
         if path == "/settings":
             s = ps.get_settings()
             s["labels"] = {"ollama": llm.model_label(s, "ollama"), "anthropic": llm.model_label(s, "anthropic")}
@@ -536,14 +547,14 @@ def main():
         try:
             purge_expired()
         except Exception as exc:  # noqa: BLE001
-            print(f"purge: {exc}", flush=True)
+            applog.error("cleanup", str(exc))
         if search.get_config().get("fit_provider", "ollama") != "off" and fit.pending_keys():
             try:
                 fit.run_async()
             except RuntimeError:
                 pass
     threading.Thread(target=rate_backlog, daemon=True).start()
-    print(f"Noble Search on :{PORT} (data in {os.path.dirname(DB_PATH)})", flush=True)
+    applog.info("start", f"Noble Search on :{PORT} (data in {os.path.dirname(DB_PATH)})")
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
 
 

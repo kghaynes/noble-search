@@ -4,6 +4,12 @@ All notable changes are listed here. Versions follow [semantic versioning](https
 
 ## [Unreleased]
 
+### Added
+- **Problems log** (Settings → Problems log): errors and notable events in one place — sources that failed, jobs that couldn't be rated, drafts that failed, email problems, and each search's result. Saved in your data folder as `logs/noble-search.log` (rotates at 1 MB), also shown by `docker compose logs`. Keys and passwords are never written to it.
+
+### Fixed
+- **Drafts failing with "Model returned invalid JSON".** Long resume and application drafts sometimes came back with one missing or extra comma, which failed the whole draft. Small slips like that are now repaired automatically, and if the reply still can't be read the draft is asked for once more. The unreadable reply is kept in `logs/` for troubleshooting.
+
 ## [0.3.0] — 2026-10-08
 Smarter, self-explaining search: plain-word matching, job-board searches built from your Profile, a settings check, and "Why didn't I see a job?".
 

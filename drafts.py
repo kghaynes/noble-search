@@ -9,6 +9,7 @@ import traceback
 from datetime import datetime, timezone
 
 import apply
+import applog
 import llm
 import profile_store as ps
 import resume
@@ -192,6 +193,23 @@ def _keywords(r, settings, draft_text, source_text):
         return {"error": f"Keyword check failed: {e}"[:300]}
 
 
+def _complete_json(settings, system, user, provider, kind, did, max_tokens=8000):
+    """Ask for JSON; if the reply can't be read even after repair, ask once more. Returns (data, provider, model)."""
+    last = None
+    for attempt in range(2):
+        prompt = user if attempt == 0 else (user + "\n\nYour previous reply was not valid JSON. "
+                                            "Return ONLY one complete, valid JSON object — no other text.")
+        raw, prov, model = llm.complete(settings, system, prompt, provider=provider, json_mode=True, max_tokens=max_tokens)
+        try:
+            return llm.parse_json(raw), prov, model
+        except llm.LLMError as e:
+            last = e
+            saved = applog.save_bad_reply(f"{kind}-draft", raw)
+            applog.warn("draft", f"{kind} draft #{did}: {e} (try {attempt + 1} of 2, model {model}"
+                                 + (f", reply saved as logs/{saved}" if saved else "") + ")")
+    raise last
+
+
 def _run_application(did, r, settings):
     job = _job(r["job_key"])
     if not job:
@@ -202,8 +220,8 @@ def _run_application(did, r, settings):
         raise RuntimeError("Your Profile is empty. Upload a resume and/or fill in the career inventory first.")
     extra = json.loads(r.get("extra_json") or "{}")
     system, user = apply.build_app_prompt(profile, inv, texts, job, r["jd_text"], extra.get("questions") or [])
-    raw, provider, model = llm.complete(settings, system, user, provider=r["provider"], json_mode=True, max_tokens=8000)
-    app = apply.normalize_app(llm.parse_json(raw))
+    data, provider, model = _complete_json(settings, system, user, r["provider"], "application", did)
+    app = apply.normalize_app(data)
     if not app["work_history"] and not app["summary"]:
         raise RuntimeError("The model returned empty application text. Try again or switch models.")
     text = apply.app_plain_text(app)
@@ -226,8 +244,8 @@ def _run_resume(did, r, settings):
     if not inv.strip() and not texts:
         raise RuntimeError("Your Profile is empty. Upload a resume and/or fill in the career inventory first.")
     system, user = resume.build_resume_prompt(profile, inv, texts, job, r["jd_text"])
-    raw, provider, model = llm.complete(settings, system, user, provider=r["provider"], json_mode=True)
-    content = resume.normalize_resume(llm.parse_json(raw))
+    data, provider, model = _complete_json(settings, system, user, r["provider"], "resume", did)
+    content = resume.normalize_resume(data)
     if not content["experience"]:
         raise RuntimeError("The model returned a resume with no experience section. Try again or switch models.")
     source_text = inv + "\n" + "\n".join(t for _, t in texts)
@@ -294,9 +312,11 @@ def _worker():
             elif r["kind"] == "application":
                 _run_application(did, r, settings)
         except llm.LLMError as e:
+            applog.error("draft", f"{r['kind']} draft #{did} for {r['job_key']}: {e}")
             _update(did, status="error", error=str(e)[:600], finished=_now())
         except Exception as e:  # noqa: BLE001
             traceback.print_exc()
+            applog.error("draft", f"{r['kind']} draft #{did} for {r['job_key']}: {e.__class__.__name__}: {e}")
             _update(did, status="error", error=f"{e.__class__.__name__}: {e}"[:600], finished=_now())
         finally:
             _current["id"] = None

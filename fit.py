@@ -10,6 +10,7 @@ import time
 from datetime import datetime, timezone
 
 import drafts
+import applog
 import llm
 import profile_store as ps
 
@@ -157,6 +158,7 @@ def run(keys=None, provider=None, force=False):
             except Exception as e:  # noqa: BLE001 — keep going; one bad job must not stop the run
                 _state["errors"] += 1
                 _state["last_error"] = str(e)[:300]
+                applog.warn("fit", f"Couldn't rate “{job.get('title')}” ({job.get('company')}): {e}")
                 if isinstance(e, llm.LLMError) and ("Cannot reach" in str(e) or "No Claude API key" in str(e)):
                     break  # the model is down; no point trying the rest
                 continue
@@ -179,6 +181,6 @@ def run_async(keys=None, provider=None, force=False):
             run(keys, provider, force)
         except Exception as e:  # noqa: BLE001
             _state["last_error"] = str(e)[:300]
-            print(f"fit run failed: {e}", flush=True)
+            applog.error("fit", f"Rating run failed: {e}")
     threading.Thread(target=go, daemon=True).start()
     time.sleep(0.05)

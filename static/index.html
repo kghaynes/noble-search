@@ -135,6 +135,8 @@ details.howto code{font-size:12px;background:var(--bg);border:1px solid var(--li
 .prog .steps .on{color:var(--ink);font-weight:700}.prog .steps .ok{color:var(--ok,#0f7b4a)}
 .warnbox{background:#fff7e6;border:1px solid #f3dca6;border-radius:12px;padding:12px 16px;margin:12px 0;color:#5a3d00;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 @media (prefers-color-scheme: dark){.warnbox{background:#33290f;border-color:#5c4a1a;color:#f3e3b8}}
+.logbox{max-height:360px;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:12px;line-height:1.45;white-space:pre-wrap;word-break:break-word;margin-top:10px}
+.logbox .le{color:#c0392b}.logbox .lw{color:var(--med)}
 .whysteps{list-style:none;padding:0;margin:8px 0 0}.whysteps li{padding:7px 0;border-top:1px solid var(--line);font-size:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:baseline}
 .whysteps .ic{display:inline-block;width:20px;text-align:center;font-weight:800}.whysteps .wy-ok .ic{color:var(--high)}.whysteps .wy-bad .ic{color:#c0392b}.whysteps .wy-na .ic{color:var(--low)}
 .verdict{border-radius:10px;padding:9px 12px;margin-top:10px;font-size:14px}.verdict.vbad{background:var(--med-bg);color:var(--med)}.verdict.vok{background:var(--high-bg);color:var(--high)}
@@ -874,6 +876,13 @@ async function renderSettings(){
       <div class="row" style="margin-top:10px"><a class="btn" href="/drafts/library" target="_blank" rel="noopener" style="text-decoration:none">Open draft library ↗</a>
         <span class="hint">Every draft by job, with time left before removal and downloads.</span></div></section>
 
+    <h3 class="sect">Problems log</h3>
+    <section class="box"><h2>Problems log</h2>
+      <div class="hint">Errors and notable events — failed sources, ratings and drafts that didn't work, email problems, each search's result — newest at the bottom. Kept in your data folder (<code>logs/noble-search.log</code>); no keys or resume text are written to it.</div>
+      <div class="row" style="margin-top:8px"><button class="btn" data-act="s_log">Show recent problems</button>
+        <a class="btn" href="/settings/log.txt" style="text-decoration:none">Download log</a><span class="hint" id="s_logn"></span></div>
+      <pre id="s_logout" class="logbox" hidden></pre></section>
+
     <div class="row"><button class="btn primary" data-act="s_save">Save settings</button></div>
   </div>`;
 }
@@ -892,6 +901,13 @@ function collectSearchSettings(){
 async function saveAllSettings(){ await api('/settings/save', collectSettings()); await api('/search/save', collectSearchSettings()); }
 async function onSettingsAct(a, t){
   if(a==='s_save'){ await saveAllSettings(); toast('Settings saved'); renderSettings(); }
+  if(a==='s_log'){
+    const r = await api('/settings/log?n=300'), box = $('#s_logout');
+    box.hidden = false;
+    box.innerHTML = r.lines.length ? r.lines.map(l => `<span class="${/ ERROR /.test(l)?'le':/ WARNING /.test(l)?'lw':''}">${esc(l)}</span>`).join('\n') : 'Nothing logged yet.';
+    box.scrollTop = box.scrollHeight;
+    $('#s_logn').textContent = r.lines.length ? `Latest ${r.lines.length} line${r.lines.length===1?"":"s"}` : '';
+  }
   if(a==='s_clearkey'){ if(!confirm('Remove the saved Claude API key?')) return; await api('/settings/save', {anthropic_api_key:'CLEAR'}); renderSettings(); }
   if(a==='s_test' || a==='s_qtest'){
     const p = t.dataset.p;
