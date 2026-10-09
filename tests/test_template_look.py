@@ -223,3 +223,93 @@ class Detect(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def make_styled_template(path):
+    """Word-styles resume: Title, centered contact + headline, Heading 1 sections, one Heading 2 line per job."""
+    from docx.enum.text import WD_ALIGN_PARAGRAPH as A
+    d = Document()
+    d.add_paragraph("Sample Person", style="Title").alignment = A.CENTER
+    d.add_paragraph("Town, ST | 555-000-1111 | sample@example.org | linkedin.com/in/sample").alignment = A.CENTER
+    h = d.add_paragraph()
+    h.alignment = A.CENTER
+    h.add_run("Operations Leader | Programs | Teams").bold = True
+    d.add_paragraph("EXECUTIVE PROFILE", style="Heading 1")
+    d.add_paragraph("Leader of large teams with a long record of running programs across many places and budgets.")
+    d.add_paragraph("SELECTED KEY RESULTS", style="Heading 1")
+    d.add_paragraph("Grew a thing a lot over time.", style="List Bullet")
+    d.add_paragraph("Fixed another thing for many people.", style="List Bullet")
+    d.add_paragraph("CORE CAPABILITIES", style="Heading 1")
+    d.add_paragraph("Planning | Budgets | Teams | Risk | Vendors")
+    d.add_paragraph("PROFESSIONAL EXPERIENCE", style="Heading 1")
+    for k in range(2):
+        d.add_paragraph(f"Director of Things | Example Corp {k} | Town, ST | 2018 – 2022", style="Heading 2")
+        d.add_paragraph("Ran the thing well.", style="List Bullet")
+        d.add_paragraph("Ran another thing well.", style="List Bullet")
+    d.add_paragraph("ADDITIONAL EXECUTIVE LEADERSHIP", style="Heading 1")
+    d.add_paragraph("Manager, Old Org (2010 – 2012) — ran a small team.", style="List Bullet")
+    d.add_paragraph("EDUCATION, CERTIFICATIONS & CLEARANCE", style="Heading 1")
+    d.add_paragraph("MBA, Some School | BS, Other School")
+    d.add_paragraph("PMP | Secret clearance")
+    d.add_paragraph("RECOGNITION", style="Heading 1")
+    d.add_paragraph("Some award, another award.")
+    d.save(path)
+    return path
+
+
+STYLED = resume.normalize_resume(dict(CONTENT, technology_skills="Cloud | AI", recognitions="Award A",
+                                      credentials_line="Secret clearance",
+                                      experience=[{"org": "New Org", "dates": "Jan 2021 - Present", "roles": [
+                                          {"title": "Chief Operating Officer", "line": "", "dates": "",
+                                           "summary": "Runs operations.", "flagship": "",
+                                           "bullets": ["Built a team"]}]},
+                                          {"org": "Mid Org", "dates": "2015 - 2020", "roles": [
+                                              {"title": "VP Ops", "line": "VP Ops | Mid Org | Town, ST | 2015 – 2020",
+                                               "dates": "", "summary": "", "flagship": "", "bullets": ["Did it"]}]}]))
+
+
+class StyledTemplate(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tpl = make_styled_template(os.path.join(TMP, "styled.docx"))
+        cls.out = os.path.join(TMP, "styled-out.docx")
+        cls.info = resume.build_docx(STYLED, PROFILE, cls.tpl, cls.out)
+        cls.d = Document(cls.out)
+        cls.rows = [(p.style.name, p.text) for p in cls.d.paragraphs if p.text.strip()]
+
+    def test_learned_shape(self):
+        look, _ = tl.learn(Document(self.tpl))
+        self.assertEqual([k for k, _ in look.sections], ["summary", "highlights", "competencies", "experience",
+                                                         "additional", "education", "recognitions"])
+        self.assertEqual(look.job_line, "one")
+        self.assertTrue(look.headline_first)
+        self.assertEqual(look.additional_mode, "bullets")
+        self.assertEqual(look.job_sep, " | ")
+
+    def test_order_and_sections(self):
+        self.assertEqual(self.info["mode"], "template")
+        heads = [t for s, t in self.rows if s == "Heading 1"]
+        self.assertEqual(heads, ["EXECUTIVE PROFILE", "SELECTED KEY RESULTS", "CORE CAPABILITIES",
+                                 "PROFESSIONAL EXPERIENCE", "ADDITIONAL EXECUTIVE LEADERSHIP",
+                                 "EDUCATION, CERTIFICATIONS & CLEARANCE", "RECOGNITION"])
+        texts = [t for _, t in self.rows]
+        self.assertLess(texts.index("Operations Executive"), texts.index("EXECUTIVE PROFILE"))  # headline on top
+        self.assertEqual(self.rows[0][0], "Title")
+        self.assertNotIn("Technology Skills", texts)          # no headings the template doesn't have
+        self.assertIn("Cloud", " ".join(texts[texts.index("CORE CAPABILITIES"):texts.index("PROFESSIONAL EXPERIENCE")]))
+
+    def test_one_line_per_job(self):
+        h2 = [t for s, t in self.rows if s == "Heading 2"]
+        self.assertEqual(h2, ["Chief Operating Officer | New Org | Jan 2021 - Present",
+                              "VP Ops | Mid Org | Town, ST | 2015 – 2020"])
+        i = [t for _, t in self.rows].index(h2[0])
+        self.assertEqual(self.rows[i + 1], ("List Bullet", "Runs operations."))   # scope becomes a bullet
+        self.assertFalse(any(t == "New Org" or t.startswith("New Org\t") for _, t in self.rows))
+
+    def test_additional_and_education(self):
+        texts = [t for _, t in self.rows]
+        a = texts.index("ADDITIONAL EXECUTIVE LEADERSHIP")
+        self.assertEqual(self.rows[a + 1], ("List Bullet", "Manager, Old Org (Jan 2010 - Dec 2012)"))
+        e = texts.index("EDUCATION, CERTIFICATIONS & CLEARANCE")
+        self.assertEqual(texts[e + 1:e + 3], ["MBA, Some School", "PMP | Secret clearance"])
+        self.assertEqual(texts[e + 3], "RECOGNITION")

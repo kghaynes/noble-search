@@ -81,6 +81,7 @@ RESUME_SCHEMA = """{
      "dates": "Mon YYYY - Mon YYYY or Present",
      "roles": [
        {"title": "Role title with civilian equivalent in parentheses when helpful",
+        "line": "ONLY if the CURRENT RESUME puts each job on one line (title, organization, place, dates together): this job's line written in exactly that pattern - same order, same separators, same date style. Otherwise empty.",
         "dates": "only for multi-role orgs, else empty",
         "summary": "1-2 sentence scope statement (people, budget, users, sites)",
         "flagship": "single strongest accomplishment for THIS job (or empty)",
@@ -179,7 +180,8 @@ def normalize_resume(c):
         roles = []
         for r in e.get("roles") or []:
             if isinstance(r, dict):
-                roles.append({"title": s(r.get("title")), "dates": s(r.get("dates")), "summary": s(r.get("summary")),
+                roles.append({"title": s(r.get("title")), "line": s(r.get("line")), "dates": s(r.get("dates")),
+                              "summary": s(r.get("summary")),
                               "flagship": s(r.get("flagship")), "bullets": ls(r.get("bullets"))[:6]})
         out["experience"].append({"org": s(e.get("org")), "dates": s(e.get("dates")), "roles": roles})
     for r in c.get("additional_roles") or []:
@@ -233,7 +235,7 @@ def content_lines(c):
     for e in c["experience"]:
         lines.append(f"{e['org']} {e['dates']}")
         for r in e["roles"]:
-            lines += [f"{r['title']} {r['dates']}", r["summary"], r["flagship"], *r["bullets"]]
+            lines += [r.get("line") or f"{r['title']} {r['dates']}", r["summary"], r["flagship"], *r["bullets"]]
     for r in c["additional_roles"]:
         lines += [f"{r['title']} {r['dates']}", *r["bullets"]]
     lines += [*c["education"], c["certifications"], c["recognitions"], c["technology_skills"]]
@@ -260,9 +262,11 @@ def to_plain_text(c, profile, names=None):
         L.append(" | ".join(c["competencies"]))
     L += ["", n["experience"].upper()]
     for e in c["experience"]:
-        L.append(f"{e['org']}    {e['dates']}".rstrip())
+        one = any(r.get("line") for r in e["roles"])
+        if not one:
+            L.append(f"{e['org']}    {e['dates']}".rstrip())
         for r in e["roles"]:
-            L.append(r["title"] + (f" | {r['dates']}" if r["dates"] else ""))
+            L.append(r["line"] if r.get("line") else r["title"] + (f" | {r['dates']}" if r["dates"] else ""))
             if r["summary"]:
                 L.append(r["summary"])
             if r["flagship"]:
@@ -620,6 +624,22 @@ def _emit(doc, part, segments, usable=None):
     return p
 
 
+_TRAIL_DATES = re.compile(r"(?:\s*[|,–—-]\s*|\s+)((?:[A-Z][a-z]{2,8}\.?\s+)?(?:19|20)\d{2}\s*[-–—]\s*"
+                          r"(?:(?:[A-Z][a-z]{2,8}\.?\s+)?(?:19|20)\d{2}|Present|Current))\s*$")
+
+
+def job_line(role, org, sep=" | "):
+    """One line for a job: the model's own line (written in the template's pattern), else title | org | dates."""
+    if role.get("line"):
+        return role["line"]
+    parts = [role["title"]]
+    if org and org.lower() not in role["title"].lower():
+        parts.append(org)
+    if role.get("dates"):
+        parts.append(role["dates"])
+    return sep.join(x for x in parts if x)
+
+
 def _build_from_look(c, profile, doc, look):
     P = look.parts
     sec = doc.sections[0]
@@ -627,8 +647,9 @@ def _build_from_look(c, profile, doc, look):
     body = P["body"]
     names = dict(DEFAULT_NAMES)
     for kind, text in look.sections:
-        if kind in names and text:
+        if text:
             names[kind] = text
+    kinds = [k for k, _ in look.sections]
     contact = " | ".join(contact_parts(profile))
     name = profile.get("full_name") or "Your Name"
 
@@ -645,40 +666,67 @@ def _build_from_look(c, profile, doc, look):
     def para(part, text, **extra):
         _emit(doc, part, [(text, "rpr", extra or None)], usable)
 
-    def summary_block():
+    def headline():
         if c["headline"]:
             if "headline" in P:
                 para(P["headline"], c["headline"])
             else:
                 para(body, c["headline"], bold=True)
+
+    if look.headline_first:
+        headline()
+
+    def summary_block():
+        if not look.headline_first:
+            headline()
         if c["summary"]:
             para(P.get("summary", body), c["summary"])
+        if "competencies" not in kinds:
+            competencies_block()   # no section for it in the template: keep it with the summary
+        if "highlights" not in kinds:
+            highlights_block()
+
+    def highlights_block():
         for h in c["highlights"]:
             para(P["highlight"], h)
 
+    edu_text = names.get("education", "").lower()
+    comp_paras = look.shape.get("competencies", (2, 0))[0]
+    cred_in_edu = bool(c["credentials_line"]) and ("clearance" in edu_text or comp_paras < 2) and "education" in kinds
+    tech_in_comp = bool(c["technology_skills"]) and "tech" not in kinds and "competencies" in kinds
+
     def competencies_block():
         part = P.get("sec_competencies", body)
-        if c["credentials_line"]:
+        if c["credentials_line"] and not cred_in_edu:
             para(part, c["credentials_line"], bold=True)
-        if not c["competencies"]:
+        items = list(c["competencies"])
+        if tech_in_comp:
+            items += [x.strip() for x in c["technology_skills"].split("|") if x.strip()]
+        if not items:
             return
         if _is_bullet_part(part):
-            items = c["competencies"]
             for i in range(0, len(items), 3):
                 para(part, " | ".join(items[i:i + 3]))
         else:
-            para(part, " | ".join(c["competencies"]))
+            para(part, " | ".join(items))
 
     def additional_block(label):
         if not c["additional_roles"]:
             return
         lab = P.get("additional_label")
-        if lab is not None:      # the template's own "Additional ..." line, in its own look
+        if label is not None and look.additional_mode == "bullets":
+            heading(label)
+        elif lab is not None:      # the template's own "Additional ..." line, in its own look
             para(lab, lab.get("text") or label or (names["additional"] + ":"))
         elif label is not None:
             heading(label)
         else:
             para(P.get("org", body), names["additional"] + ":", bold=True)
+        if look.additional_mode == "bullets":
+            for r in c["additional_roles"]:
+                head = r["title"] + (f" ({r['dates']})" if r["dates"] else "")
+                para(P["bullet"], head + (" — " + " ".join(r["bullets"]) if r["bullets"] else ""))
+            return
         rp = P.get("additional_role") or P.get("title") or body
         for r in c["additional_roles"]:
             if r["dates"]:
@@ -689,10 +737,40 @@ def _build_from_look(c, profile, doc, look):
             for b in r["bullets"]:
                 para(P["bullet"], b)
 
+    def role_bullets(r, scope_as_bullet):
+        if r["summary"]:
+            if scope_as_bullet:
+                para(P["bullet"], r["summary"])
+            elif "scope" in P:
+                para(P["scope"], r["summary"])
+            else:
+                para(body, r["summary"], italic=True)
+        if r["flagship"]:
+            fp = P.get("flagship")
+            if fp and fp.get("label"):
+                _emit(doc, fp, [(fp["label"][0], fp["label"][1]), (r["flagship"], "rpr")])
+            else:
+                para(fp or P["bullet"], r["flagship"])
+        for b in r["bullets"]:
+            para(P["bullet"], b)
+
     def experience_block(with_additional):
         orgp = P.get("org", body)
         titlep = P.get("title", orgp)
         for e in c["experience"]:
+            if look.job_line == "one":
+                # the template has one line per job, then bullets: no separate employer or scope lines
+                for r in e["roles"]:
+                    line = job_line(dict(r, dates=r["dates"] or e["dates"]), e["org"], look.job_sep)
+                    if look.job_tab:
+                        m = _TRAIL_DATES.search(line)
+                        if m:
+                            _emit(doc, orgp, [(line[:m.start()], "rpr"), ("\t" + m.group(1), "rpr2")], usable)
+                            role_bullets(r, "scope" not in P)
+                            continue
+                    para(orgp, line)
+                    role_bullets(r, "scope" not in P)
+                continue
             if e["org"] or e["dates"]:
                 segs = [(e["org"], "rpr")]
                 if e["dates"]:
@@ -704,21 +782,28 @@ def _build_from_look(c, profile, doc, look):
                     if r["dates"]:
                         segs.append((("\t" if _has_tab_stop(titlep) else " | ") + r["dates"], "rpr2"))
                     _emit(doc, titlep, segs, usable)
-                if r["summary"]:
-                    if "scope" in P:
-                        para(P["scope"], r["summary"])
-                    else:
-                        para(body, r["summary"], italic=True)
-                if r["flagship"]:
-                    fp = P.get("flagship")
-                    if fp and fp.get("label"):
-                        _emit(doc, fp, [(fp["label"][0], fp["label"][1]), (r["flagship"], "rpr")])
-                    else:
-                        para(fp or P["bullet"], r["flagship"])
-                for b in r["bullets"]:
-                    para(P["bullet"], b)
+                role_bullets(r, False)
         if with_additional:
             additional_block(None)
+
+    def education_block():
+        part = P.get("sec_education", body)
+        lines = list(c["education"])
+        extra = []
+        if "certifications" not in kinds and c["certifications"]:
+            extra.append(c["certifications"])
+        if cred_in_edu:
+            extra.append(c["credentials_line"])
+        if "recognitions" not in kinds and c["recognitions"]:
+            extra.append(c["recognitions"])
+        n_paras, n_bul = look.shape.get("education", (0, 0))
+        if not n_bul and n_paras and n_paras < len(lines) + len(extra):
+            # the template packs this section into fewer lines: degrees on one, the rest on the next
+            packed = [" | ".join(lines), " | ".join(extra)] if n_paras >= 2 else [" | ".join(lines + extra)]
+            lines, extra = [x for x in packed if x], []
+        for ln in lines + extra:
+            if ln:
+                para(part, ln)
 
     def lines_block(kind, lines):
         part = P.get("sec_" + kind, body)
@@ -726,24 +811,25 @@ def _build_from_look(c, profile, doc, look):
             if ln:
                 para(part, ln)
 
-    kinds = [k for k, _ in look.sections]
     if "summary" not in kinds:
         summary_block()
     done = set()
     writers = {
         "summary": lambda t: summary_block(),
+        "highlights": lambda t: highlights_block(),
         "competencies": lambda t: competencies_block(),
         "experience": lambda t: experience_block("additional" not in kinds),
         "additional": lambda t: additional_block(t),
-        "education": lambda t: lines_block("education", c["education"] + ([] if "certifications" in kinds
-                                                                          else [c["certifications"]])),
+        "education": lambda t: education_block(),
         "certifications": lambda t: lines_block("certifications", [c["certifications"]]),
         "recognitions": lambda t: lines_block("recognitions", [c["recognitions"]]),
         "tech": lambda t: lines_block("tech", [c["technology_skills"]]),
     }
     has = {"summary": bool(c["headline"] or c["summary"] or c["highlights"]),
-           "competencies": bool(c["competencies"] or c["credentials_line"]), "experience": True,
-           "additional": bool(c["additional_roles"]), "education": bool(c["education"] or c["certifications"]),
+           "highlights": bool(c["highlights"]),
+           "competencies": bool(c["competencies"] or c["credentials_line"] or tech_in_comp), "experience": True,
+           "additional": bool(c["additional_roles"]),
+           "education": bool(c["education"] or c["certifications"] or cred_in_edu),
            "certifications": bool(c["certifications"]), "recognitions": bool(c["recognitions"]),
            "tech": bool(c["technology_skills"])}
     for kind, text in look.sections:
@@ -753,10 +839,9 @@ def _build_from_look(c, profile, doc, look):
         if kind != "additional":
             heading(text)
         writers[kind](text)
-    # content the template has no section for: add it with the template's heading look
-    for kind in ("competencies", "experience", "education", "recognitions", "tech"):
-        if kind not in done and has[kind] and not (kind == "education" and "certifications" in done
-                                                    and not c["education"]):
+    # The template's sections win: no new headings, except the two hiring software looks for.
+    for kind in ("experience", "education"):
+        if kind not in done and has[kind]:
             done.add(kind)
             heading(names[kind])
             writers[kind](names[kind])
@@ -809,8 +894,8 @@ def ats_check(docx_path, profile):
     add("No symbol fonts (Wingdings/Symbol) that parse as junk", not bad, ", ".join(bad) or "clean")
     pua = sorted({hex(ord(ch)) for ch in text if 0xE000 <= ord(ch) <= 0xF8FF})
     add("No private-use characters", not pua, ", ".join(pua[:5]) or "clean")
-    date_re = re.compile(r"\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}\b")
-    add("Dates in 'Mon YYYY' format", len(date_re.findall(text)) >= 2, f"{len(date_re.findall(text))} found")
+    date_re = re.compile(r"\b(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+)?(?:19|20)\d{2}\b")
+    add("Job dates readable", len(date_re.findall(text)) >= 2, f"{len(date_re.findall(text))} found", warn=True)
     words = len(re.findall(r"\b\w+\b", text))
     add("Length fits ~2 pages (500-950 words)", 500 <= words <= 950, f"{words} words", warn=True)
     header_text = " ".join(p.text for s in d.sections for p in s.header.paragraphs).strip()

@@ -160,6 +160,12 @@ class Look:
         self.parts = {}
         self.sections = []          # [(kind, heading text)] in template order
         self.name_with_contact = False
+        self.headline_first = False   # headline sits above the first section heading
+        self.job_line = "split"       # "one": one line per job (title/org/dates together) then bullets
+        self.job_tab = False          # dates pushed right with a tab on job lines
+        self.job_sep = " | "          # separator used on one-line job lines
+        self.additional_mode = "lines"   # "bullets": each additional role is one bullet
+        self.shape = {}               # section kind -> (plain paragraphs, bullets) in the template
 
     def has(self, part):
         return part in self.parts
@@ -250,9 +256,22 @@ def learn(doc):
     heads.discard(first_text)   # the first line is the name, even if styled like a heading
     if not any(section_kind(texts[i]) == "experience" for i in heads):
         return None, "no Experience heading was found in it"
-    for i in sorted(heads):
+    # what each section holds (plain paragraphs vs bullets), to tell an unnamed bullets section apart
+    order = sorted(heads)
+    head_kind = {}
+    exp_at = min(i for i in order if section_kind(texts[i]) == "experience")
+    for n, i in enumerate(order):
+        end = order[n + 1] if n + 1 < len(order) else len(paras)
+        body_i = [j for j in range(i + 1, end) if texts[j]]
+        nb = sum(1 for j in body_i if is_bullet(paras[j]))
         kind = section_kind(texts[i]) or "other"
-        look.sections.append((kind, texts[i].rstrip(":").strip() if kind != "other" else texts[i]))
+        if kind == "other" and i < exp_at and nb and nb == len(body_i) and "highlights" not in head_kind.values():
+            kind = "highlights"
+        head_kind[i] = kind
+        look.shape.setdefault(kind, (len(body_i) - nb, nb))
+        look.sections.append((kind, texts[i].rstrip(":").strip() if kind not in ("other", "highlights") else texts[i]))
+    if look.shape.get("additional", (1, 0))[0] == 0 and look.shape.get("additional", (0, 0))[1]:
+        look.additional_mode = "bullets"
     look.parts["heading"] = _part(paras[min(i for i in heads if section_kind(texts[i]))], keep_numbering=False)
 
     # walk the document section by section
@@ -264,7 +283,7 @@ def learn(doc):
         if not t:
             continue
         if i in heads:
-            section = section_kind(t) or "other"
+            section = head_kind.get(i, "other")
             if section == "additional" and "additional_label" not in look.parts:
                 look.parts["additional_label"] = dict(_part(p, keep_numbering=False), text=t)
                 section = "experience"
@@ -275,13 +294,15 @@ def learn(doc):
             if _CONTACT_RE.search(t):
                 look.name_with_contact = True
             continue
-        if section in ("top", "summary"):
+        if section in ("top", "summary", "highlights"):
             if _CONTACT_RE.search(t) and not bullet and "contact" not in look.parts and len(t) < 160:
                 look.parts["contact"] = _part(p, keep_numbering=False)
             elif bullet:
                 look.parts.setdefault("highlight", _part(p))
             elif len(t) < 120 and not t.endswith(".") and "summary" not in look.parts:
-                look.parts.setdefault("headline", _part(p, keep_numbering=False))
+                if "headline" not in look.parts:
+                    look.parts["headline"] = _part(p, keep_numbering=False)
+                    look.headline_first = section == "top"
             else:
                 look.parts.setdefault("summary", _part(p, keep_numbering=False, main=True))
             continue
@@ -315,6 +336,13 @@ def learn(doc):
         look.parts["title"] = _part(short[1] if len(short) > 1 else short[0], keep_numbering=False, second_run=True)
     if long_:
         look.parts["scope"] = _part(long_[0], keep_numbering=False, main=True)
+    if len(short) == 1 and not long_:
+        line = short[0].text
+        look.job_line = "one"
+        look.job_tab = "\t" in line
+        seps = [(line.count(s), s) for s in (" | ", " — ", " – ", " • ", " · ", ", ")]
+        best = max(seps)
+        look.job_sep = best[1] if best[0] else " | "
     for kind, p in first_of.items():
         look.parts["sec_" + kind] = _part(p, main=True)
     if "bullet" not in look.parts:
