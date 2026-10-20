@@ -84,6 +84,10 @@ def _update(did, **kw):
 def public(r, full=False):
     out = {k: r[k] for k in ("id", "job_key", "kind", "status", "error", "provider", "model", "created", "finished")}
     out["has_docx"] = bool(r.get("docx_path")) and os.path.exists(r["docx_path"])
+    try:
+        out["template"] = (json.loads(r.get("extra_json") or "{}") or {}).get("template") or ""
+    except json.JSONDecodeError:
+        out["template"] = ""
     out["ats"] = json.loads(r["ats_json"]) if r.get("ats_json") else None
     out["facts"] = json.loads(r["facts_json"]) if r.get("facts_json") else []
     notes = []
@@ -235,6 +239,7 @@ def _run_application(did, r, settings):
     if not inv.strip() and not texts:
         raise RuntimeError("Your Profile is empty. Upload a resume and/or fill in the career inventory first.")
     extra = json.loads(r.get("extra_json") or "{}")
+    profile = dict(profile, template_resume=_template_for(r, profile))   # the resume picked for this job leads
     system, user = apply.build_app_prompt(profile, inv, texts, job, r["jd_text"], extra.get("questions") or [])
     data, provider, model = _complete_json(settings, system, user, r["provider"], "application", did)
     app = apply.normalize_app(data)
@@ -251,6 +256,15 @@ def _run_application(did, r, settings):
             text=text, facts_json=json.dumps(facts), keywords_json=json.dumps(kw) if kw else "")
 
 
+def _template_for(r, profile):
+    """The resume this draft follows: the one picked for this job, else the default from the Profile."""
+    try:
+        pick = (json.loads(r.get("extra_json") or "{}") or {}).get("template") or ""
+    except json.JSONDecodeError:
+        pick = ""
+    return pick if pick and pick in ps.resume_names() else (profile.get("template_resume") or "")
+
+
 def _run_resume(did, r, settings):
     job = _job(r["job_key"])
     if not job:
@@ -259,7 +273,8 @@ def _run_resume(did, r, settings):
     inv, texts = _sources()
     if not inv.strip() and not texts:
         raise RuntimeError("Your Profile is empty. Upload a resume and/or fill in the career inventory first.")
-    system, user = resume.build_resume_prompt(profile, inv, texts, job, r["jd_text"], profile.get("template_resume") or "")
+    tname = _template_for(r, profile)
+    system, user = resume.build_resume_prompt(profile, inv, texts, job, r["jd_text"], tname)
     data, provider, model = _complete_json(settings, system, user, r["provider"], "resume", did)
     content = resume.normalize_resume(data)
     if not content["experience"]:
@@ -268,10 +283,10 @@ def _run_resume(did, r, settings):
     facts = resume.fact_check(content, source_text)
     safe_company = "".join(ch for ch in (job.get("company") or "job") if ch.isalnum())[:30]
     out = os.path.join(DRAFT_DIR, f"draft-{did}-{safe_company}.docx")
-    layout = resume.build_docx(content, profile, ps.template_path(), out) or {}
+    layout = resume.build_docx(content, profile, ps.template_path(tname), out) or {}
     ats = resume.ats_check(out, profile)
     if layout.get("mode") == "template":
-        ats["checks"].insert(0, {"name": "Layout copied from your template resume", "ok": True, "level": "ok",
+        ats["checks"].insert(0, {"name": f"Layout copied from {tname or 'your template resume'}", "ok": True, "level": "ok",
                                  "detail": "headings, lines, bullets and job lines match it"})
     else:
         ats["checks"].insert(0, {"name": "Layout copied from your template resume", "ok": False, "level": "warn",
