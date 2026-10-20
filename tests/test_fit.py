@@ -82,5 +82,5 @@ class Retry(unittest.TestCase):
         finally:
             llm.complete = old
         self.assertEqual(r["fit"], "High")
-        self.assertEqual(calls, [(600, False), (1000, True), (1000, True)])
+        self.assertEqual(calls, [(1000, False), (2000, True), (4000, True)])
 

@@ -193,20 +193,36 @@ def _keywords(r, settings, draft_text, source_text):
         return {"error": f"Keyword check failed: {e}"[:300]}
 
 
-def _complete_json(settings, system, user, provider, kind, did, max_tokens=8000):
-    """Ask for JSON; if the reply can't be read even after repair, ask once more. Returns (data, provider, model)."""
-    last = None
-    for attempt in range(2):
-        prompt = user if attempt == 0 else (user + "\n\nYour previous reply was not valid JSON. "
+MAX_REPLY_TOKENS = 32000
+
+
+def _complete_json(settings, system, user, provider, kind, did, max_tokens=16000):
+    """Ask for JSON. A reply cut off at the output limit is asked for again with twice the room; a reply that
+    can't be read even after repair is asked for once more. Returns (data, provider, model)."""
+    last, limit, bad_json = None, max_tokens, False
+    for attempt in range(3):
+        prompt = user if not bad_json else (user + "\n\nYour previous reply was not valid JSON. "
                                             "Return ONLY one complete, valid JSON object — no other text.")
-        raw, prov, model = llm.complete(settings, system, prompt, provider=provider, json_mode=True, max_tokens=max_tokens)
+        try:
+            raw, prov, model = llm.complete(settings, system, prompt, provider=provider, json_mode=True, max_tokens=limit)
+        except llm.LLMCutOff as e:
+            saved = applog.save_bad_reply(f"{kind}-draft", e.text)
+            applog.warn("draft", f"{kind} draft #{did}: {e} (try {attempt + 1}"
+                                 + (f", reply saved as logs/{saved}" if saved else "") + ")")
+            if limit >= MAX_REPLY_TOKENS:
+                raise llm.LLMError("The model's reply was too long and got cut off, even with the largest limit. "
+                                   "Try again, shorten the pasted job description, or switch models.") from None
+            last, limit = e, min(limit * 2, MAX_REPLY_TOKENS)
+            continue
         try:
             return llm.parse_json(raw), prov, model
         except llm.LLMError as e:
-            last = e
             saved = applog.save_bad_reply(f"{kind}-draft", raw)
-            applog.warn("draft", f"{kind} draft #{did}: {e} (try {attempt + 1} of 2, model {model}"
+            applog.warn("draft", f"{kind} draft #{did}: {e} (try {attempt + 1}, model {model}"
                                  + (f", reply saved as logs/{saved}" if saved else "") + ")")
+            if bad_json:
+                raise
+            last, bad_json = e, True
     raise last
 
 

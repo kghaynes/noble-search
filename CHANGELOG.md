@@ -4,6 +4,9 @@ All notable changes are listed here. Versions follow [semantic versioning](https
 
 ## [Unreleased]
 
+### Fixed
+- **Drafts failing with "invalid JSON" when the reply was cut off.** A long resume could run past the reply limit (some models also use part of it to think first), and the half-finished reply looked like broken JSON. Drafts now get twice the room (16,000 tokens), a cut-off reply is detected and asked for again with 32,000, and the error says plainly when a reply was too long. Fit rating gets more room the same way.
+
 ## [0.3.1] — 2026-10-09
 Drafts that look like your own resume, a problems log, and no more drafts failing on a stray comma.
 
