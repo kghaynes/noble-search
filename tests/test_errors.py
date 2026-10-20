@@ -78,3 +78,67 @@ class CurrentResume(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CutOff(unittest.TestCase):
+    def _run(self, replies):
+        calls = []
+
+        def fake(settings, system, user, provider=None, json_mode=True, max_tokens=8000, model=None):
+            calls.append((max_tokens, "ONLY one complete, valid JSON" in user))
+            r = replies[len(calls) - 1]
+            if r is None:
+                raise llm.LLMCutOff("cut off", '{"a": "half', max_tokens)
+            return r, "anthropic", "sonnet"
+        old = llm.complete
+        llm.complete = fake
+        try:
+            return drafts._complete_json({}, "sys", "user", "anthropic", "resume", 9), calls
+        finally:
+            llm.complete = old
+
+    def test_cut_off_gets_twice_the_room(self):
+        (data, _, _), calls = self._run([None, '{"a": "ok"}'])
+        self.assertEqual(data, {"a": "ok"})
+        self.assertEqual(calls, [(16000, False), (32000, False)])   # same prompt, more room
+        self.assertTrue(any("cut off" in l and "draft #9" in l for l in applog.tail(20)))
+
+    def test_cut_off_at_largest_limit_says_so(self):
+        with self.assertRaises(llm.LLMError) as cm:
+            self._run([None, None])
+        self.assertIn("too long and got cut off", str(cm.exception))
+
+    def test_bad_json_then_good(self):
+        (data, _, _), calls = self._run(['{"a": "x" : }', '{"a": "ok"}'])
+        self.assertEqual(data, {"a": "ok"})
+        self.assertEqual(calls, [(16000, False), (16000, True)])
+
+    def test_claude_max_tokens_stop_raises_cutoff(self):
+        old = llm._post
+        llm._post = lambda url, body, headers=None, timeout=900: {"stop_reason": "max_tokens",
+                                                                   "content": [{"type": "text", "text": '{"a": "x'}]}
+        try:
+            with self.assertRaises(llm.LLMCutOff) as cm:
+                llm.complete({"anthropic_api_key": "k"}, "s", "u", provider="anthropic", max_tokens=123)
+        finally:
+            llm._post = old
+        self.assertEqual(cm.exception.limit, 123)
+        self.assertEqual(cm.exception.text, '{"a": "x')
+
+
+class PerJobTemplate(unittest.TestCase):
+    def test_pick_overrides_default(self):
+        import profile_store as ps
+        old = ps.resume_names
+        ps.resume_names = lambda: ["exec.docx", "pm.docx"]
+        try:
+            prof = {"template_resume": "exec.docx"}
+            self.assertEqual(drafts._template_for({"extra_json": json.dumps({"template": "pm.docx"})}, prof), "pm.docx")
+            self.assertEqual(drafts._template_for({"extra_json": "{}"}, prof), "exec.docx")
+            # a pick that was since removed falls back to the default
+            self.assertEqual(drafts._template_for({"extra_json": json.dumps({"template": "gone.docx"})}, prof), "exec.docx")
+            self.assertEqual(drafts.public({"id": 1, "job_key": "k", "kind": "resume", "status": "done", "error": "",
+                                            "provider": "anthropic", "model": "m", "created": "", "finished": "",
+                                            "extra_json": json.dumps({"template": "pm.docx"})})["template"], "pm.docx")
+        finally:
+            ps.resume_names = old
