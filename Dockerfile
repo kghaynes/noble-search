@@ -1,4 +1,4 @@
-FROM python:3.14-slim
+FROM python:3.15-slim
 WORKDIR /app
 RUN mkdir -p /data
 COPY requirements.txt /app/requirements.txt
