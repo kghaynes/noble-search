@@ -1,2 +1,2 @@
 python-docx==1.2.0
-tzdata==2026.4
+tzdata==2026.6
