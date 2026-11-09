@@ -190,3 +190,26 @@ class Email(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GreenhouseRedirect(unittest.TestCase):
+    def _fake(self, final):
+        class R:
+            def __enter__(s): return s
+            def __exit__(s, *a): return False
+            def geturl(s): return final
+        return lambda req, timeout=15: R()
+
+    def test_only_real_greenhouse_host(self):
+        import urllib.request
+        old_open, old_host = urllib.request.urlopen, closures._public_host
+        closures._public_host = lambda u: True
+        try:
+            for final, want in (("https://boards.greenhouse.io/acme?error=true", True),
+                                ("https://evil.example/?x=greenhouse.io&error=true", False),
+                                ("https://greenhouse.io.evil.example/?error=true", False),
+                                ("https://boards.greenhouse.io/acme/jobs/1", False)):
+                urllib.request.urlopen = self._fake(final)
+                self.assertEqual(closures.link_gone("https://jobs.example.com/1"), want, final)
+        finally:
+            urllib.request.urlopen, closures._public_host = old_open, old_host

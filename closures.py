@@ -227,8 +227,10 @@ def link_gone(url, timeout=15):
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "text/html"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:   # noqa: S310 — public http(s) only, checked above
-            final = r.geturl() or ""
-            return "greenhouse.io" in final and "error=true" in final
+            final = urllib.parse.urlparse(r.geturl() or "")
+            host = (final.hostname or "").lower()
+            greenhouse = host == "greenhouse.io" or host.endswith(".greenhouse.io")
+            return greenhouse and "error=true" in final.query
     except urllib.error.HTTPError as e:
         return e.code in (404, 410)
     except (urllib.error.URLError, OSError, ValueError):
