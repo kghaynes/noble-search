@@ -50,6 +50,8 @@ DEFAULTS = {
     "title_examples": "",          # titles the person wants to catch (from ✨ Suggest titles), used by the check
     "jsearch_pages": 1,
     "jsearch_skip_sites": sources.DEFAULT_JSEARCH_SKIP,
+    "jsearch_linkedin": False,     # LinkedIn results: off by default; on only after the person confirms the notice
+    "jsearch_linkedin_ack": "",    # when they confirmed it (UTC)
     "fit_provider": "anthropic",
     "email_enabled": False,
     "email_to": "",
@@ -113,8 +115,8 @@ def save_config(new):
             cur["jsearch_what"], cur["jsearch_queries"] = "\n".join(ph), "\n".join(ex)
         # job phrases last: lines that name another place move into the exact searches
         for k, v in sorted((new or {}).items(), key=lambda kv: kv[0] == "jsearch_what"):
-            if k not in DEFAULTS:
-                continue
+            if k not in DEFAULTS or k in ("jsearch_linkedin", "jsearch_linkedin_ack"):
+                continue   # LinkedIn is switched only through set_linkedin(), which records the confirmation
             if k in SECRETS:
                 v = str(v or "").strip()
                 if not v or v.startswith("••••"):
@@ -173,6 +175,35 @@ def save_config(new):
             json.dump(cur, f, indent=2)
         os.chmod(tmp, 0o600)
         os.replace(tmp, SEARCH_JSON)
+    return get_config()
+
+
+LINKEDIN_NOTICE = ("LinkedIn does not permit this application to show the description or details of its jobs — only "
+                   "the title, the company and a link to the posting. To use a LinkedIn job in the resume and keyword "
+                   "check, open it on LinkedIn, copy the description, and paste it into Resume & apply.")
+
+
+def set_linkedin(on, confirmed=False):
+    """Turn LinkedIn results on (only with the person's confirmation of LINKEDIN_NOTICE, which is recorded) or off."""
+    if on and not confirmed:
+        raise ValueError("Please read and confirm the LinkedIn notice first.")
+    with _cfg_lock:
+        try:
+            with open(SEARCH_JSON, encoding="utf-8") as f:
+                cur = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            cur = {}
+        cur["jsearch_linkedin"] = bool(on)
+        if on:
+            cur["jsearch_linkedin_ack"] = _now()
+        os.makedirs(os.path.dirname(SEARCH_JSON), exist_ok=True)
+        tmp = SEARCH_JSON + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(cur, f, indent=2)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, SEARCH_JSON)
+    applog.info("linkedin", "LinkedIn results turned ON — the person confirmed: title, company and link only"
+                if on else "LinkedIn results turned off")
     return get_config()
 
 
