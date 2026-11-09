@@ -236,7 +236,7 @@ def build(run, cfg):
             chips += chip(_closes_text(d, j), "#b42318", "#fde8e7")
         if fast(j):
             chips += chip(fast(j), "#7a2e0e", "#fff1e0")
-        link = j.get("link") or url
+        link = j.get("link") or j.get("linkedin_link") or url
         loc = " · ".join(e(x) for x in [j.get("location"), j.get("work_mode")] if x)
         return f"""<tr><td style="padding:16px 0;border-top:1px solid {LINE}">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
@@ -261,7 +261,7 @@ def build(run, cfg):
         li = "".join(
             f'<tr><td style="padding:9px 0;border-top:1px solid {LINE};{F};font-size:14px;line-height:1.4;color:{INK}">'
             f'{chip((j.get("fit") or "Not rated") + (" fit" if j.get("fit") else ""), *pill.get(j.get("fit") or "", pill[""]))}'
-            f'<a href="{e(j.get("link") or url)}" style="color:{NAVY};font-weight:600;text-decoration:none">{e(j["title"])}</a>'
+            f'<a href="{e(j.get("link") or j.get("linkedin_link") or url)}" style="color:{NAVY};font-weight:600;text-decoration:none">{e(j["title"])}</a>'
             f' <span style="color:{MUTED}">— {e(j["company"])}{" · " + e(meta(j)) if meta(j) else ""}</span></td></tr>' for j in more)
         if extra > 0:
             li += (f'<tr><td style="padding:9px 0;border-top:1px solid {LINE};{F};font-size:14px;color:{MUTED}">'
@@ -283,7 +283,7 @@ def build(run, cfg):
                     f'<div style="font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#b42318;margin-bottom:4px">Closed since the last search</div>{li}</div></td></tr>')
     if soon:
         li = "".join(f'<div style="margin:4px 0"><b>{e(_closes_text(d, j)[:1].upper() + _closes_text(d, j)[1:])}:</b> '
-                     f'<a href="{e(j.get("link") or url)}" style="color:{NAVY};text-decoration:none">{e(j["title"])}</a> — {e(j["company"])}</div>' for d, j in soon)
+                     f'<a href="{e(j.get("link") or j.get("linkedin_link") or url)}" style="color:{NAVY};text-decoration:none">{e(j["title"])}</a> — {e(j["company"])}</div>' for d, j in soon)
         rows.append(f'<tr><td style="padding:20px 0 0"><div style="background:#fff7e6;border:1px solid #f3dca6;border-radius:10px;padding:12px 14px;{F};font-size:14px;line-height:1.45;color:{INK}">'
                     f'<div style="font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#8a5a00;margin-bottom:4px">Closing within 7 days</div>{li}</div></td></tr>')
     foot = []

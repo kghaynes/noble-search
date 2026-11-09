@@ -40,6 +40,9 @@ def fetch_posting(url, timeout=20):
     if not url or not url.startswith("http"):
         return False, "", "No link on this job."
     host = (urllib.parse.urlparse(url).hostname or "").lower()
+    if host == "linkedin.com" or host.endswith(".linkedin.com"):
+        return False, "", ("LinkedIn doesn't permit this app to show a job's description or details. Open the posting on "
+                           "LinkedIn, copy the description, and paste it here.")
     if host == "indeed.com" or host.endswith(".indeed.com"):
         return False, "", "Indeed blocks automated reading. Open the posting, copy the description, and paste it here."
     req = urllib.request.Request(url, headers={

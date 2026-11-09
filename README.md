@@ -23,7 +23,7 @@ I care about my fellow soldiers and veterans (airman, marines, sailors, guardian
 
 Noble Search runs on your own computer. Every weekday morning it:
 
-1. **Searches** for jobs that match you and your preferences, not random free search texts. It looks at the hiring websites of employers you pick, at USAJOBS, and at the big job boards (LinkedIn, Indeed, Glassdoor, ZipRecruiter and others).
+1. **Searches** for jobs that match you and your preferences, not random free search texts. It looks at the hiring websites of employers you pick, at USAJOBS, and at the big job boards (Indeed, Glassdoor, ZipRecruiter and others; LinkedIn optionally, title and link only).
 2. **Rates each job** High, Medium or Low fit for *your* background. Each rating comes with a one-line reason in civilian terms and names any gap.
 3. **Emails you a short summary** (optional).
 4. **Pushes you a phone notification** (optional).
@@ -128,7 +128,7 @@ The software is **free** for personal and noncommercial use to help *you* the ve
 |---|---|---|
 | **Claude API** (the AI) | **Yes**, unless you run your own local model (see [Advanced](#use-a-local-ai-model-instead-of-claude-ollama)) | Prepaid credit. Nothing is charged automatically. Typical use: **about $2–$10 a month for fit ratings**, plus **about 5–15 cents per resume or application draft**. A $10 credit lasts most people a month or more. |
 | **USAJOBS API** (federal jobs) | Optional | Free |
-| **JSearch** (LinkedIn, Indeed, Glassdoor, ZipRecruiter…) | Optional, recommended | Free plan: 200 searches a month, enough for about 7 searches every weekday |
+| **JSearch** (Indeed, Glassdoor, ZipRecruiter…, LinkedIn optional) | Optional, recommended | Free plan: 200 searches a month, enough for about 7 searches every weekday |
 | **Gmail** (morning email) | Optional | Free. Needs a Gmail "app password". |
 | **ntfy** (phone alert) | Optional | Free |
 
@@ -344,7 +344,7 @@ Tips:
 
 ### JSearch key (optional, free plan)
 
-JSearch reads **Google for Jobs**, which is Google's index of public job postings. One key covers LinkedIn, Indeed, Glassdoor, ZipRecruiter, many smaller boards, and company career sites.
+JSearch reads **Google for Jobs**, which is Google's index of public job postings. One key covers Indeed, Glassdoor, ZipRecruiter, many smaller boards, and company career sites. LinkedIn is off by default; see [LinkedIn postings](#linkedin-postings-off-by-default).
 
 1. Open <https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch> and sign up. Google sign-in works.
 2. Click **Pricing** and subscribe to the free **Basic** plan: 200 requests a month, no card needed.
@@ -433,6 +433,17 @@ The other two sources:
 
 - **USAJOBS** is searched near your home town, plus a separate search for remote jobs. Optionally (Search page → *Federal jobs posted "nationwide"*), senior postings filled "anywhere" — Multiple locations, Location negotiable, "relocate to an assigned site" — are kept too and marked **relocation required**, for any agency or only agencies with offices near you.
 - **JSearch** searches each job you listed near home and/or remotely (following your Profile work modes), for jobs posted in the last month. Each search uses one request. If that's more than your monthly limit allows (200 on the free plan), the searches take turns from run to run. The Search page shows exactly what runs, and **How each search is doing** shows, for each job, what the boards returned, what you kept and what was new over the last runs, so you can replace searches that find nothing.
+
+### LinkedIn postings (off by default)
+
+LinkedIn doesn't permit apps like this to show the description or details of its jobs, so Noble Search handles LinkedIn results this way:
+
+- **Off (the default):** job-board results published by LinkedIn are dropped inside the search, before anything is saved or shown. The search report says how many were left out.
+- **Turning it on:** Search page → Job-board searches → **Include LinkedIn postings**. A confirmation explains the limits, and the app records that you confirmed, with the time, in the Problems log and in your search settings.
+- **On:** a LinkedIn job keeps only its **title**, its **company**, and an **Also listed on LinkedIn ↗** link. No location, pay, dates, description or other LinkedIn details are stored or shown. To draft a resume or run the keyword check, open the posting on LinkedIn, copy the description, and paste it into **Resume & apply**. Noble Search never opens LinkedIn pages itself ("Fetch from posting" says to paste instead).
+- **Also on an employer's site:** the card shows the employer's details as usual, plus the **Also listed on LinkedIn** link (only while LinkedIn is on).
+- **Upgrading:** the first start on this version removes jobs known only from LinkedIn, with their drafts. Watchlist ones are kept but reduced to title, company and link. This happens once.
+- **Turning it off again** hides LinkedIn-only jobs and LinkedIn links right away.
 
 Every job found is then filtered. It is kept only if:
 

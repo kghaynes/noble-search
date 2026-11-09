@@ -50,6 +50,7 @@ main{padding:14px 0 60px}
 .pill.closedp{color:var(--new);background:transparent;border:1px solid var(--new)}
 .pill.fast{color:#9a3d06;background:#fff1e0}
 @media (prefers-color-scheme: dark){ .pill.fast{color:#ffcf9e;background:#3a2412} }
+.lilink{color:var(--accent);font-weight:600;text-decoration:none}
 .alertline{font-size:13px;font-weight:650;color:var(--new)}
 .closebtn{grid-column:1 / -1;border:none;background:transparent;color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline;text-align:left;padding:2px 0}
 .passbox{grid-column:1 / -1;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--accent-soft)}
@@ -364,6 +365,8 @@ function card(j){
   const closedLbl = closed ? `Closed ${esc(niceDay(j.closed_on))}${j.days_up!=null?` · was up ${j.days_up} day${j.days_up===1?'':'s'}`:''}${j.early_days?` · ${j.early_days} days before its deadline`:''}` : '';
   const filled = closed && j.watch ? (['applied','interviewing','offer'].includes(j.status) ? 'Posting closed — likely filled. Follow up or move on.' : 'Closed before you applied.') : '';
   const passing = S.passing===j.job_key;
+  const li = j.linkedin_link ? `<a class="lilink" href="${esc(j.linkedin_link)}" target="_blank" rel="noopener" data-open="${esc(j.job_key)}">Also listed on LinkedIn ↗</a>` : '';
+  if(j.linkedin_only) return liCard(j, st, li, closed, closedLbl, filled, passing);
   return `<article class="card ${j.status==='dismissed'?'dim':''} ${closed?'closed':''}" data-k="${esc(j.job_key)}">
     <div class="main">
     <div class="head">
@@ -382,6 +385,7 @@ function card(j){
       ${j.salary?`<span>${esc(j.salary)}</span>`:''}
       ${j.clearance?`<span>Clearance: ${esc(j.clearance)}</span>`:''}
       ${j.sources?`<span>via ${esc(j.sources)}</span>`:''}
+      ${li?`<span>${li}</span>`:''}
       ${!j.watch && j.expires && (j.status==='dismissed' || S.counts[j.job_key]) ? `<span class="${S.counts[j.job_key]?'close':''}">${S.counts[j.job_key]?'Job and drafts removed':'Removed'} ${esc(niceDay(j.expires))}${S.counts[j.job_key]?' — ★ to keep':''}</span>`:''}
     </div>
     ${filled?`<div class="alertline">${filled}</div>`:''}
@@ -410,6 +414,28 @@ function closuresHTML(c){
   </section>`;
 }
 const PASS_REASONS = [['certifications','Certifications'],['skills','Specific skills'],['salary','Salary'],['location','Location'],['other','Other']];
+function liCard(j, st, li, closed, closedLbl, filled, passing){
+  // LinkedIn doesn't permit showing its job details here: title, company and the link only.
+  return `<article class="card ${j.status==='dismissed'?'dim':''} ${closed?'closed':''}" data-k="${esc(j.job_key)}">
+    <div class="main">
+    <div class="head">
+      ${j.fit?`<span class="pill fit-${esc(j.fit)}">${esc(j.fit)} fit</span>`:''}
+      ${!j.viewed?'<span class="pill newb">NEW</span>':''}
+      ${closed?`<span class="pill closedp">${closedLbl}</span>`:''}
+      <span class="title">${esc(j.title)}</span>
+    </div>
+    <div class="sub"><b>${esc(j.company)}</b></div>
+    <div class="meta">${li}</div>
+    ${filled?`<div class="alertline">${filled}</div>`:''}
+    <div class="hint">LinkedIn doesn’t permit showing this job’s details here. Open it on LinkedIn, and to draft a resume, paste its description into <b>Resume &amp; apply</b>.</div>
+    </div>
+    <div class="actions">${passing ? passHTML(j) : st + `<button class="draftbtn ${S.open.has(j.job_key)?'on':''}" data-draft="${esc(j.job_key)}">✎ Resume &amp; apply${S.counts[j.job_key]?` · ${S.counts[j.job_key]}`:''}</button>`
+      + (closed ? `<button class="closebtn" data-act="j_reopen" data-k="${esc(j.job_key)}">↺ Reopen — it's still up</button>`
+                : `<button class="closebtn" data-act="j_close" data-k="${esc(j.job_key)}">Posting closed?</button>`)}</div>
+    <div class="notes"><textarea data-notes="${esc(j.job_key)}" placeholder="Notes — recruiter, contact, next step…">${esc(j.notes)}</textarea><div class="saved" id="sv-${esc(j.job_key)}"></div></div>
+    ${S.open.has(j.job_key) ? `<div class="dpanel" id="dp-${esc(j.job_key)}">${panelHTML(j.job_key)}</div>` : ''}
+  </article>`;
+}
 function passHTML(j){
   return `<div class="passbox"><b>Why not for you?</b> <span class="hint">Optional — helps spot patterns.</span><div>
     ${PASS_REASONS.map(([k,l]) => `<label><input type="checkbox" data-pr="${k}"> ${l}</label>`).join('')}</div>
@@ -633,6 +659,12 @@ function verHTML(key, d){
 async function onAct(t){
   const a = t.dataset.act, key = t.dataset.k, id = +t.dataset.id;
   try{
+    if(a==='q_linkedin'){
+      const on = t.checked;
+      if(on && !confirm('Include LinkedIn postings?\n\n' + (t.dataset.notice || '') + '\n\nClick OK to confirm you understand. Your confirmation and its time are recorded.')){ t.checked = false; return; }
+      await api('/search/linkedin', {on, confirmed: on});
+      toast(on ? 'LinkedIn postings on — title, company and link only' : 'LinkedIn postings off'); renderSearch(); return;
+    }
     if(a==='j_close' || a==='j_reopen'){
       const r = await fetch('/jobs/close', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({job_key:key, closed: a==='j_close'})});
       if(!r.ok) throw new Error('save failed');
@@ -1172,6 +1204,10 @@ async function renderSearch(keep){
         <label class="fld">Requests your plan allows per month<input id="q_jbudget" type="number" min="10" value="${esc(c.jsearch_budget||200)}"><span class="hint">The free plan allows 200. Searches take turns if there are more than fit.</span></label>
         <details class="howto full"><summary>Advanced: exact searches</summary>
           <label class="fld">Run exactly as typed, one per line ({home} = your home town). Used in addition to the jobs above and counted in the same limit.<textarea id="q_jq" rows="3" placeholder="director it in Orlando, FL">${esc(c.jsearch_queries||'')}</textarea></label></details>
+        <div class="fld full linkedin"><label class="radio"><input type="checkbox" data-act="q_linkedin" data-notice="${esc(d.linkedin_notice||'')}" ${c.jsearch_linkedin?'checked':''}> <b>Include LinkedIn postings</b> — title, company and a link only</label>
+          <span class="hint">${c.jsearch_linkedin
+            ? `On since ${esc(niceDay((c.jsearch_linkedin_ack||'').slice(0,10)))}. LinkedIn jobs show only their title, company and an <i>Also listed on LinkedIn</i> link; paste the description yourself in Resume &amp; apply.`
+            : 'Off. LinkedIn results are left out before anything is saved or shown. LinkedIn doesn’t permit showing its job details here, so turning this on shows only the title, company and a link.'}</span></div>
         <label class="fld full">Skip these re-posting sites (one per line)<textarea id="q_jskip" rows="4">${esc(c.jsearch_skip_sites)}</textarea>
           <span class="hint">Some sites copy jobs from elsewhere; their copies are often out of date and sometimes fake. Links to these sites are never used — a job is kept only if the employer's own link or a known board (LinkedIn, Indeed…) is available.</span></label>
       </div></section>

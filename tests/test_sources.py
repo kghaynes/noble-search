@@ -313,7 +313,7 @@ class JSearch(unittest.TestCase):
         data = {"status": "OK", "data": [
             {"job_id": "1", "employer_name": "L3Harris Technologies", "job_title": "Director, Secure Area IT", "job_city": "Melbourne",
              "job_state": "FL", "job_country": "US", "job_is_remote": False, "job_posted_at_datetime_utc": D(2) + "T12:00:00.000Z",
-             "job_apply_link": "https://www.linkedin.com/jobs/view/1", "job_publisher": "LinkedIn",
+             "job_apply_link": "https://www.indeed.com/viewjob?jk=1", "job_publisher": "Indeed",
              "apply_options": [{"publisher": "L3Harris", "apply_link": "https://careers.l3harris.com/en/job/melbourne/x/4832/1", "is_direct": True}],
              "job_description": "Lead classified IT. Active TS/SCI.", "job_min_salary": 150000, "job_max_salary": 200000, "job_salary_period": "YEAR",
              "job_employment_type": "FULLTIME"},
@@ -337,7 +337,7 @@ class JSearch(unittest.TestCase):
         a = next(r for r in rows if r["company"] == "L3Harris Technologies")
         self.assertEqual(urllib.parse.urlparse(a["link"]).hostname, "careers.l3harris.com")  # employer link preferred
         self.assertEqual(a["salary"], "$150,000–$200,000")
-        self.assertEqual(a["sources"], "JSearch (LinkedIn)")
+        self.assertEqual(a["sources"], "JSearch (Indeed)")
         self.assertIn("query=director+it+in+Melbourne%2C+FL", fake.calls[0][0])
         self.assertIn("remote_jobs_only=true", fake.calls[1][0])
 
