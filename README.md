@@ -23,7 +23,7 @@ I care about my fellow soldiers and veterans (airman, marines, sailors, guardian
 
 Noble Search runs on your own computer. Every weekday morning it:
 
-1. **Searches** for jobs that match you and your preferences, not random free search texts. It looks at the hiring websites of employers you pick, at USAJOBS, and at the big job boards (LinkedIn, Indeed, Glassdoor, ZipRecruiter and others).
+1. **Searches** for jobs that match you and your preferences, not random free search texts. It looks at the hiring websites of employers you pick, at USAJOBS, and at the big job boards (Indeed, Glassdoor, ZipRecruiter and others; LinkedIn optionally, title and link only).
 2. **Rates each job** High, Medium or Low fit for *your* background. Each rating comes with a one-line reason in civilian terms and names any gap.
 3. **Emails you a short summary** (optional).
 4. **Pushes you a phone notification** (optional).
@@ -51,6 +51,7 @@ Everything is kept on your computer. You bring your own AI key, which costs a fe
 - [Getting your keys](#getting-your-keys)
 - [Using it day to day](#using-it-day-to-day)
 - [How the search works](#how-the-search-works)
+- [Closed postings and the ⚡ apply-fast signal](#closed-postings-and-the--apply-fast-signal)
 - [How long things are kept](#how-long-things-are-kept)
 - [Privacy and security](#privacy-and-security)
 - [Opening it from your phone or another computer](#opening-it-from-your-phone-or-another-computer)
@@ -127,7 +128,7 @@ The software is **free** for personal and noncommercial use to help *you* the ve
 |---|---|---|
 | **Claude API** (the AI) | **Yes**, unless you run your own local model (see [Advanced](#use-a-local-ai-model-instead-of-claude-ollama)) | Prepaid credit. Nothing is charged automatically. Typical use: **about $2–$10 a month for fit ratings**, plus **about 5–15 cents per resume or application draft**. A $10 credit lasts most people a month or more. |
 | **USAJOBS API** (federal jobs) | Optional | Free |
-| **JSearch** (LinkedIn, Indeed, Glassdoor, ZipRecruiter…) | Optional, recommended | Free plan: 200 searches a month, enough for about 7 searches every weekday |
+| **JSearch** (Indeed, Glassdoor, ZipRecruiter…, LinkedIn optional) | Optional, recommended | Free plan: 200 searches a month, enough for about 7 searches every weekday |
 | **Gmail** (morning email) | Optional | Free. Needs a Gmail "app password". |
 | **ntfy** (phone alert) | Optional | Free |
 
@@ -343,7 +344,7 @@ Tips:
 
 ### JSearch key (optional, free plan)
 
-JSearch reads **Google for Jobs**, which is Google's index of public job postings. One key covers LinkedIn, Indeed, Glassdoor, ZipRecruiter, many smaller boards, and company career sites.
+JSearch reads **Google for Jobs**, which is Google's index of public job postings. One key covers Indeed, Glassdoor, ZipRecruiter, many smaller boards, and company career sites. LinkedIn is off by default; see [LinkedIn postings](#linkedin-postings-off-by-default).
 
 1. Open <https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch> and sign up. Google sign-in works.
 2. Click **Pricing** and subscribe to the free **Basic** plan: 200 requests a month, no card needed.
@@ -397,6 +398,10 @@ The alert arrives with the morning email.
       - Answers marked **[confirm]** need facts that aren't in your Profile. Check them yourself.
    4. **Check the keyword chips.** "Add — you have these" are posting terms your Profile supports but your draft doesn't use yet.
 4. **Track.** Move the job through Applied → Interviewing → Offer.
+   - A **⚡ Usually closes in ~N days** chip means that employer takes postings down fast. Apply soon.
+   - A dimmed card labeled **Closed** means the posting was taken down. If you'd applied, it says **likely filled — follow up or move on**. If it's still up, click **↺ Reopen**.
+   - Found a posting gone on LinkedIn or Indeed? Click **Posting closed?** on its card.
+   - Moving a **watchlist** job to **Not for me** asks why (certifications, specific skills, salary, location, other). It's optional, and dismissing from the Inbox never asks.
 5. **Export.** **Export CSV** gives you a spreadsheet of everything.
 
 To rate a job again, for example after improving your inventory, click **Re-rate** on its card.
@@ -429,6 +434,18 @@ The other two sources:
 - **USAJOBS** is searched near your home town, plus a separate search for remote jobs. Optionally (Search page → *Federal jobs posted "nationwide"*), senior postings filled "anywhere" — Multiple locations, Location negotiable, "relocate to an assigned site" — are kept too and marked **relocation required**, for any agency or only agencies with offices near you.
 - **JSearch** searches each job you listed near home and/or remotely (following your Profile work modes), for jobs posted in the last month. Each search uses one request. If that's more than your monthly limit allows (200 on the free plan), the searches take turns from run to run. The Search page shows exactly what runs, and **How each search is doing** shows, for each job, what the boards returned, what you kept and what was new over the last runs, so you can replace searches that find nothing.
 
+### LinkedIn postings (off by default)
+
+LinkedIn doesn't permit apps like this to show the description or details of its jobs, so Noble Search handles LinkedIn results this way:
+
+- **Off (the default):** job-board results published by LinkedIn are dropped inside the search, before anything is saved or shown. The search report says how many were left out.
+- **Turning it on:** Search page → Job-board searches → **Include LinkedIn postings**. A confirmation explains the limits, and the app records that you confirmed, with the time, in the Problems log and in your search settings.
+- **On:** a LinkedIn job keeps only its **title**, its **company**, and an **Also listed on LinkedIn ↗** link. No location, pay, dates, description or other LinkedIn details are stored or shown. To draft a resume or run the keyword check, open the posting on LinkedIn, copy the description, and paste it into **Resume & apply**. Noble Search never opens LinkedIn pages itself ("Fetch from posting" says to paste instead).
+- **Ratings:** a LinkedIn job is still rated, from its title and company only, and shows **⚠ Title-only rating — paste the description for a full rating**. Click that pill, paste the description in Resume & apply, and click **Rate with this description**: the description you pasted is saved with the job, and it's rated again in full.
+- **Also on an employer's site:** the card shows the employer's details as usual, plus the **Also listed on LinkedIn** link (only while LinkedIn is on).
+- **Upgrading:** the first start on this version removes jobs known only from LinkedIn, with their drafts. Watchlist ones are kept but reduced to title, company and link. This happens once.
+- **Turning it off again** hides LinkedIn-only jobs and LinkedIn links right away.
+
 Every job found is then filtered. It is kept only if:
 
 - its title contains one of your **seniority words** (e.g. director, VP, program manager), one of your **field words** if you listed any (e.g. IT, cyber, network, logistics), and none of your **skip words** (e.g. nurse, sales, intern). Senior federal jobs (your minimum GS grade and up, or SES/SL/ST) count as the right level even without a seniority word, but still need a field word and must avoid skip words
@@ -444,6 +461,45 @@ If something is set up in a way that stops this working — for example rating i
 
 ---
 
+## Closed postings and the ⚡ apply-fast signal
+
+Many postings come down within days, long before the closing date they list. Noble Search notices, and turns that into a reason to apply fast.
+
+**How a posting is marked closed**
+
+| Where it was found | What happens | Marked by |
+|---|---|---|
+| The employer's own hiring system (Workday, Greenhouse, Lever, Ashby, SmartRecruiters, BambooHR, Eightfold, sitemap) | It's gone from the employer's list in a search that worked → **closed right away** | *Taken down from the employer's hiring site* |
+| USAJOBS | It dropped out of USAJOBS (which only lists open announcements) → closed; if that's before its closing date, the card says how many days early | *Removed from USAJOBS* |
+| A job on your watchlist | Its posting link now answers "not found" → closed | *The posting link no longer works* |
+| Anywhere, including LinkedIn and Indeed | You click **Posting closed?** | *You marked it closed* |
+
+Job boards (JSearch: LinkedIn, Indeed, Glassdoor, …) never close a job on their own. The searches take turns and return only the top results, so "not in today's results" proves nothing. LinkedIn and Indeed also block automated checks, and Noble Search doesn't try to get around that.
+
+**What you see**
+
+- **Dimmed card:** a closed job stays in its tab, dimmed, at the bottom, with a label like *Closed Nov 7 · was up 4 days · 12 days before its deadline*. Hover the label to see how it was detected.
+- **Watchlist alert:** if you'd starred or applied to it, the card says *Closed before you applied* or *Posting closed — likely filled. Follow up or move on.* The morning email lists these under **Closed since the last search**.
+- **⚡ chip:** once an employer has at least 5 closed postings, Noble Search knows how long its postings usually stay up (the median). If that's 10 days or less, its new jobs get **⚡ Usually closes in ~N days**, on the card and on morning-email top picks.
+- **Search page → Closed postings:** totals by how they were detected, reposts, how fast each employer closes, and why watchlist jobs became *Not for me*.
+
+**Safety rules (so a bad day never closes good jobs)**
+
+- **Reads that failed:** nothing is closed from a source whose read failed, was stopped or was turned off.
+- **First read:** the first read of a source only learns its listings, and so does the first read after its settings change (its link, or for USAJOBS the nationwide choice, agencies, grade or home town). Closures start the next day.
+- **Short reads:** a read that returns under half the listings it usually does closes nothing.
+- **Title rules:** a job still listed under the same title stays open, even if you changed your title rules and it no longer counts as a match.
+- **Older jobs:** jobs older than the window a reader scans are only closed by the link check (the watchlist ones).
+- **Reposts:** a closed job that shows up again on the employer's site or USAJOBS **reopens on its own**, counted as a repost. If *you* closed it, a job board still showing it won't reopen it, but the employer's site will.
+
+**What's kept**
+
+A small record of each closure: company, title, source, fit, lane, posted, closed and closing dates, how it was detected, and your status at the time. It's kept after the job itself is cleaned up, so the per-employer speeds keep learning. *Not for me* reasons are kept the same way, with your optional note. No notes, drafts or job descriptions are kept in either record.
+
+Full details: [docs/closed-postings.md](docs/closed-postings.md).
+
+---
+
 ## How long things are kept
 
 - **Watchlist jobs** (Interested, Applied, Interviewing, Offer) are **kept until you change their status**.
@@ -452,6 +508,7 @@ If something is set up in a way that stops this working — for example rating i
   - The job is not added back later.
 - Each card and the Draft Library show the date a job will be removed. To keep a draft, star the job or download the draft.
 - To change the 30 days, set `MAX_AGE_DAYS` in `.env`.
+- **Closed jobs** follow the same rules. The small closure record (and *Not for me* reasons) is kept after the job is removed; see [Closed postings](#closed-postings-and-the--apply-fast-signal).
 
 ---
 
@@ -615,6 +672,7 @@ python3 -m unittest discover -s tests
 | `fit.py` | Fit rating: High/Med/Low, lane, reason and gaps |
 | `insight.py` | Settings check, "Why didn't I see a job?", and the job-board search report |
 | `suggest.py` | ✨ Suggest towns, job-board searches and job titles (from your career and military background) |
+| `closures.py` | Closed postings: detection after each source read, the watchlist link check, per-employer speed (⚡), *Not for me* reasons |
 | `notify.py` | Morning email and ntfy push |
 | `llm.py` | Talks to the Claude API or Ollama |
 | `profile_store.py` | Profile, resumes, career inventory, settings |

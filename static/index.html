@@ -46,6 +46,17 @@ main{padding:14px 0 60px}
 .empty{color:var(--muted);text-align:center;padding:48px 0}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px;box-shadow:var(--shadow);display:grid;grid-template-columns:1fr auto;gap:6px 16px}
 .card.dim{opacity:.6}
+.card.closed .main,.card.closed .notes{opacity:.55}
+.pill.closedp{color:var(--new);background:transparent;border:1px solid var(--new)}
+.pill.fast{color:#9a3d06;background:#fff1e0}
+@media (prefers-color-scheme: dark){ .pill.fast{color:#ffcf9e;background:#3a2412} }
+.pillbtn{border:none;cursor:pointer;font:inherit;font-size:12px;font-weight:650}
+.lilink{color:var(--accent);font-weight:600;text-decoration:none}
+.alertline{font-size:13px;font-weight:650;color:var(--new)}
+.closebtn{grid-column:1 / -1;border:none;background:transparent;color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline;text-align:left;padding:2px 0}
+.passbox{grid-column:1 / -1;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--accent-soft)}
+.passbox label{display:inline-flex;align-items:center;gap:5px;margin:3px 12px 3px 0;font-size:13px}
+.passbox input[type=text]{width:100%;margin-top:6px}
 .card .head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
 .title{font-size:16px;font-weight:650;text-decoration:none;color:var(--ink)}
 .title:hover{color:var(--accent);text-decoration:underline}
@@ -214,7 +225,7 @@ body{padding-bottom:56px}
 <footer class="legal">Noble Search &copy; 2026 Kenneth Haynes and <a href="https://cybercloudai.tech" target="_blank" rel="noopener">CyberCloudAI.tech</a>. Licensed under the <a href="https://polyformproject.org/licenses/noncommercial/1.0.0/" target="_blank" rel="noopener">PolyForm Noncommercial License 1.0.0</a>. Commercial use or reuse is prohibited without written permission.</footer>
 
 <script>
-const S = {findHTML:'', find:null, scr:{}, qsOpen:{}, jobs:[], tab:'inbox', view:'jobs', open:new Set(), drafts:{}, jd:{}, jdMsg:{}, prov:{}, show:{}, counts:{}, settings:null};
+const S = {findHTML:'', find:null, scr:{}, qsOpen:{}, jobs:[], tab:'inbox', view:'jobs', open:new Set(), drafts:{}, jd:{}, jdMsg:{}, prov:{}, tpl:{}, resumeList:null, show:{}, counts:{}, settings:null};
 const TABS = [
   ['inbox','Inbox', j => !j.watch && j.status!=='dismissed'],
   ['watch','Watchlist', j => j.watch],
@@ -276,11 +287,11 @@ function filtered(){
   let a = S.jobs.filter(tabFn).filter(j => passFilters(j, f));
   const s = $('#sort').value;
   const pd = j => j.posted_date || '0000';
-  a.sort((x,y)=>
+  a.sort((x,y)=> (!!x.closed_on - !!y.closed_on) || (   // closed postings sink to the bottom of the tab
     s==='fit' ? (FITRANK[x.fit]??3)-(FITRANK[y.fit]??3) || pd(y).localeCompare(pd(x)) :
     s==='closing' ? (x.closing_date||'9999').localeCompare(y.closing_date||'9999') :
     s==='company' ? x.company.localeCompare(y.company) :
-    pd(y).localeCompare(pd(x)) || (FITRANK[x.fit]??3)-(FITRANK[y.fit]??3));
+    pd(y).localeCompare(pd(x)) || (FITRANK[x.fit]??3)-(FITRANK[y.fit]??3)));
   return a;
 }
 function clearFilters(){
@@ -351,12 +362,20 @@ function setupHTML(){
 function card(j){
   const posted = j.posted_date ? `Posted ${esc(j.posted_date)} (${daysAgo(j.posted_date)})` : 'Posted date unverified';
   const st = STATUS_BTNS.map(([s,l]) => `<button class="st ${j.status===s?'on':''}" data-s="${s}" data-k="${esc(j.job_key)}">${l}</button>`).join('');
-  return `<article class="card ${j.status==='dismissed'?'dim':''}" data-k="${esc(j.job_key)}">
+  const closed = !!j.closed_on;
+  const closedLbl = closed ? `Closed ${esc(niceDay(j.closed_on))}${j.days_up!=null?` · was up ${j.days_up} day${j.days_up===1?'':'s'}`:''}${j.early_days?` · ${j.early_days} days before its deadline`:''}` : '';
+  const filled = closed && j.watch ? (['applied','interviewing','offer'].includes(j.status) ? 'Posting closed — likely filled. Follow up or move on.' : 'Closed before you applied.') : '';
+  const passing = S.passing===j.job_key;
+  const li = j.linkedin_link ? `<a class="lilink" href="${esc(j.linkedin_link)}" target="_blank" rel="noopener" data-open="${esc(j.job_key)}">Also listed on LinkedIn ↗</a>` : '';
+  if(j.linkedin_only) return liCard(j, st, li, closed, closedLbl, filled, passing);
+  return `<article class="card ${j.status==='dismissed'?'dim':''} ${closed?'closed':''}" data-k="${esc(j.job_key)}">
     <div class="main">
     <div class="head">
       ${j.fit?`<span class="pill fit-${esc(j.fit)}">${esc(j.fit)} fit</span>`:`<span class="pill unrated">${S.fitState&&S.fitState.running?'Rating soon…':'Not rated'}</span>`}
       ${!j.viewed?'<span class="pill newb">NEW</span>':''}
-      ${j.open_status && j.open_status!=='Open'?`<span class="pill warn">${esc(j.open_status)}</span>`:''}
+      ${closed?`<span class="pill closedp" title="${esc(j.closed_how||'')}">${closedLbl}</span>`:''}
+      ${!closed && j.fast_days!=null?`<span class="pill fast" title="${esc(j.company)}'s postings have stayed up a median of ${j.fast_days} days. Apply soon.">⚡ Usually closes in ~${j.fast_days} days</span>`:''}
+      ${j.open_status && !['Open','Closed'].includes(j.open_status)?`<span class="pill warn">${esc(j.open_status)}</span>`:''}
       ${j.watch && !j.active?'<span class="pill warn">Over 30 days</span>':''}
       <a class="title" href="${esc(j.link)}" target="_blank" rel="noopener" data-open="${esc(j.job_key)}">${esc(j.title)}</a>
     </div>
@@ -367,15 +386,66 @@ function card(j){
       ${j.salary?`<span>${esc(j.salary)}</span>`:''}
       ${j.clearance?`<span>Clearance: ${esc(j.clearance)}</span>`:''}
       ${j.sources?`<span>via ${esc(j.sources)}</span>`:''}
+      ${li?`<span>${li}</span>`:''}
       ${!j.watch && j.expires && (j.status==='dismissed' || S.counts[j.job_key]) ? `<span class="${S.counts[j.job_key]?'close':''}">${S.counts[j.job_key]?'Job and drafts removed':'Removed'} ${esc(niceDay(j.expires))}${S.counts[j.job_key]?' — ★ to keep':''}</span>`:''}
     </div>
+    ${filled?`<div class="alertline">${filled}</div>`:''}
     ${j.fit_reason?`<div class="why">${esc(j.fit_reason)}${j.lane?` <span class="hint">· ${esc(j.lane)}</span>`:''}</div>`:''}
     <div class="ratedby">${j.fit_by?`Fit by ${esc(j.fit_by)} · `:''}<button class="linkbtn" data-act="rate" data-k="${esc(j.job_key)}">${j.fit?'Re-rate':'Rate now'}</button></div>
     </div>
-    <div class="actions">${st}<button class="draftbtn ${S.open.has(j.job_key)?'on':''}" data-draft="${esc(j.job_key)}">✎ Resume &amp; apply${S.counts[j.job_key]?` · ${S.counts[j.job_key]}`:''}</button></div>
+    <div class="actions">${passing ? passHTML(j) : st + `<button class="draftbtn ${S.open.has(j.job_key)?'on':''}" data-draft="${esc(j.job_key)}">✎ Resume &amp; apply${S.counts[j.job_key]?` · ${S.counts[j.job_key]}`:''}</button>`
+      + (closed ? `<button class="closebtn" data-act="j_reopen" data-k="${esc(j.job_key)}" title="${esc(j.closed_how||'')}. Reopen if it's still up.">↺ Reopen — it's still up</button>`
+                : `<button class="closebtn" data-act="j_close" data-k="${esc(j.job_key)}" title="Use this when the posting is gone (for example on LinkedIn or Indeed, which the app can't check).">Posting closed?</button>`)}</div>
     <div class="notes"><textarea data-notes="${esc(j.job_key)}" placeholder="Notes — recruiter, contact, next step…">${esc(j.notes)}</textarea><div class="saved" id="sv-${esc(j.job_key)}"></div></div>
     ${S.open.has(j.job_key) ? `<div class="dpanel" id="dp-${esc(j.job_key)}">${panelHTML(j.job_key)}</div>` : ''}
   </article>`;
+}
+function closuresHTML(c){
+  if(!c) return '';
+  const by = c.by || {}, total = Object.values(by).reduce((a,b)=>a+b, 0);
+  const how = [['employer',"employer hiring sites"],['usajobs','USAJOBS'],['link','dead posting links'],['you','marked by you']]
+    .filter(([k])=>by[k]).map(([k,l])=>`${by[k]} from ${l}`).join(' · ');
+  const emp = (c.employers||[]).map(([co,n,m]) => `<tr><td>${esc(co)}${m<=c.fast_days?' <span class="pill fast">⚡ fast</span>':''}</td><td>${m} day${m===1?'':'s'} <span class="hint">· ${n} closed</span></td></tr>`).join('');
+  const rs = Object.entries(c.reasons||{}).sort((a,b)=>b[1]-a[1]).map(([k,n]) => `${esc((PASS_REASONS.find(x=>x[0]===k)||[k,k])[1])} ${n}`).join(' · ');
+  return `<section class="box"><h2>Closed postings</h2>
+    <div class="hint">Every search notices postings that were taken down: gone from the employer's own hiring site or from USAJOBS (closed right away), or a watchlist posting whose link no longer works. Job boards like LinkedIn and Indeed can't be checked — use <b>Posting closed?</b> on the job. Closed jobs stay in your list, dimmed. Once an employer has ${c.min_closures}+ closed postings, jobs from employers that usually close within ${c.fast_days} days get a ⚡ chip here and in the morning email.</div>
+    <p>${total ? `<b>${total}</b> closed so far — ${how}${c.reposts?` · ${c.reposts} reopened (reposted)`:''}.` : 'Nothing closed yet. The first search after an upgrade only learns each source; closures start with the next one.'}</p>
+    ${emp ? `<table class="qt"><tr><th>Employer</th><th>Postings stay up (median)</th></tr>${emp}</table>` : total ? `<div class="hint">Employer speeds appear once an employer has ${c.min_closures} closed postings.</div>` : ''}
+    ${rs ? `<p class="hint" style="margin-top:8px">Why watchlist jobs became “Not for me”: ${rs}.</p>` : ''}
+  </section>`;
+}
+const PASS_REASONS = [['certifications','Certifications'],['skills','Specific skills'],['salary','Salary'],['location','Location'],['other','Other']];
+function liCard(j, st, li, closed, closedLbl, filled, passing){
+  // LinkedIn doesn't permit showing its job details here: title, company and the link only.
+  return `<article class="card ${j.status==='dismissed'?'dim':''} ${closed?'closed':''}" data-k="${esc(j.job_key)}">
+    <div class="main">
+    <div class="head">
+      ${j.fit?`<span class="pill fit-${esc(j.fit)}">${esc(j.fit)} fit</span>`:''}
+      ${!j.has_description?`<button class="pill warn pillbtn" data-draft="${esc(j.job_key)}" title="This rating is from the title and company only. Open Resume &amp; apply, paste the job description from LinkedIn, and click Rate with this description.">&#9888; Title-only rating — paste the description for a full rating</button>`:''}
+      ${!j.viewed?'<span class="pill newb">NEW</span>':''}
+      ${closed?`<span class="pill closedp">${closedLbl}</span>`:''}
+      <span class="title">${esc(j.title)}</span>
+    </div>
+    <div class="sub"><b>${esc(j.company)}</b></div>
+    <div class="meta">${li}</div>
+    ${filled?`<div class="alertline">${filled}</div>`:''}
+    ${j.has_description && j.fit_reason ? `<div class="why">${esc(j.fit_reason)}</div>` : ''}
+    <div class="hint">LinkedIn doesn’t permit showing this job’s details here. Open it on LinkedIn, and to draft a resume${j.has_description?'':' or get a full rating'}, paste its description into <b>Resume &amp; apply</b>.</div>
+    </div>
+    <div class="actions">${passing ? passHTML(j) : st + `<button class="draftbtn ${S.open.has(j.job_key)?'on':''}" data-draft="${esc(j.job_key)}">✎ Resume &amp; apply${S.counts[j.job_key]?` · ${S.counts[j.job_key]}`:''}</button>`
+      + (closed ? `<button class="closebtn" data-act="j_reopen" data-k="${esc(j.job_key)}">↺ Reopen — it's still up</button>`
+                : `<button class="closebtn" data-act="j_close" data-k="${esc(j.job_key)}">Posting closed?</button>`)}</div>
+    <div class="notes"><textarea data-notes="${esc(j.job_key)}" placeholder="Notes — recruiter, contact, next step…">${esc(j.notes)}</textarea><div class="saved" id="sv-${esc(j.job_key)}"></div></div>
+    ${S.open.has(j.job_key) ? `<div class="dpanel" id="dp-${esc(j.job_key)}">${panelHTML(j.job_key)}</div>` : ''}
+  </article>`;
+}
+function passHTML(j){
+  return `<div class="passbox"><b>Why not for you?</b> <span class="hint">Optional — helps spot patterns.</span><div>
+    ${PASS_REASONS.map(([k,l]) => `<label><input type="checkbox" data-pr="${k}"> ${l}</label>`).join('')}</div>
+    <input type="text" class="inp" id="pnote-${esc(j.job_key)}" maxlength="300" placeholder="Anything else? (optional)">
+    <div class="row" style="margin-top:8px;gap:8px"><button class="btn primary sm" data-act="pass_save" data-k="${esc(j.job_key)}">Save &amp; move to Not for me</button>
+    <button class="btn sm" data-act="pass_skip" data-k="${esc(j.job_key)}">Skip</button>
+    <button class="linkbtn" data-act="pass_cancel" data-k="${esc(j.job_key)}">Cancel</button></div></div>`;
 }
 async function update(key, body){
   const r = await fetch('/jobs/update', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({job_key:key, ...body})});
@@ -389,6 +459,7 @@ document.addEventListener('click', async e => {
   if(t.classList.contains('st')){
     const key = t.dataset.k, j = S.jobs.find(x=>x.job_key===key);
     const next = j.status===t.dataset.s ? '' : t.dataset.s;
+    if(next==='dismissed' && j.watch){ S.passing = key; render(); return; }   // ask why (watchlist only, never Inbox triage)
     await update(key, {status: next, viewed: 1}); render(); return;
   }
   if(t.dataset.open){ update(t.dataset.open, {viewed:1}).then(render); return; }
@@ -400,6 +471,7 @@ const timers = {};
 document.addEventListener('input', e => {
   if(e.target.dataset.jd !== undefined){ S.jd[e.target.dataset.jd] = e.target.value; return; }
   if(e.target.dataset.prov !== undefined){ S.prov[e.target.dataset.prov] = e.target.value; return; }
+  if(e.target.dataset.tpl !== undefined){ S.tpl[e.target.dataset.tpl] = e.target.value; return; }
   if(e.target.dataset.scr !== undefined){ S.scr[e.target.dataset.scr] = e.target.value; S.qsOpen[e.target.dataset.scr] = true; return; }
   const key = e.target.dataset.notes; if(key===undefined) return;
   const v = e.target.value, sv = document.getElementById('sv-'+key);
@@ -464,12 +536,22 @@ async function toggleDraft(key){
   if(!(S.jd[key]||'').trim()) autoJD(key);
 }
 async function refreshDrafts(key){
+  if(!S.resumeList){ try{ S.resumeList = (await api('/profile')).resumes || []; }catch(e){ S.resumeList = []; } }
   try{ const d = await api('/drafts/list?job_key='+encodeURIComponent(key)); S.drafts[key] = d.drafts; }catch(e){ S.drafts[key] = S.drafts[key]||[]; }
   const el = document.getElementById('dp-'+key); if(el) el.innerHTML = panelHTML(key);
   const busy = (S.drafts[key]||[]).some(d => ['queued','running'].includes(d.status));
   clearTimeout(S['poll_'+key]);
   if(busy && S.open.has(key)) S['poll_'+key] = setTimeout(()=>refreshDrafts(key), 4000);
   else if(S.drafts[key]) S.counts[key] = S.drafts[key].filter(d=>d.status==='done').length;
+}
+function tplOptions(key){
+  const rs = S.resumeList || [];
+  if(rs.length < 2) return '';
+  const def = (rs.find(r => r.is_template) || {}).name || '';
+  const sel = S.tpl[key] || '';
+  return `<label class="hint" title="The resume this draft follows for layout, section names and wording. Your default is set in Profile → Resumes.">Follow
+    <select class="inp" data-tpl="${esc(key)}"><option value="">${esc(def||'default')} (default)</option>${
+      rs.filter(r => r.name !== def).map(r => `<option value="${esc(r.name)}" ${sel===r.name?'selected':''}>${esc(r.name)}</option>`).join('')}</select></label>`;
 }
 function panelHTML(key){
   const ds = S.drafts[key];
@@ -481,6 +563,7 @@ function panelHTML(key){
     <div>
       <div class="row" style="margin-bottom:6px"><span class="hint">Job description (makes the draft much sharper):</span>
         <button class="btn sm" data-act="fetchjd" data-k="${esc(key)}">Fetch from posting</button>
+        ${(S.jobs.find(x=>x.job_key===key)||{}).linkedin_only ? `<button class="btn sm" data-act="rate_jd" data-k="${esc(key)}" title="Saves the description you pasted with this job and rates it again — a full rating instead of title-only.">Rate with this description</button>` : ''}
         ${msg?`<span class="hint ${msg.ok?'':'err'}">${esc(msg.text)}</span>`:''}</div>
       <textarea class="jd" data-jd="${esc(key)}" placeholder="Paste the job description here (or click Fetch from posting).">${esc(S.jd[key]||'')}</textarea>
     </div>
@@ -488,6 +571,7 @@ function panelHTML(key){
       <textarea class="jd" style="min-height:70px" data-scr="${esc(key)}" placeholder="Paste the form's questions, one per line. Leave empty for the common ones (work authorization, clearance, salary…).">${esc(S.scr[key]||'')}</textarea></details>
     <div class="row">
       <select class="inp" data-prov="${esc(key)}">${provOptions(S.prov[key])}</select>
+      ${tplOptions(key)}
       <button class="btn primary" data-act="gen" data-kind="resume" data-k="${esc(key)}" ${busy?'disabled':''}>${busy?'Working…':'Draft resume'}</button>
       <button class="btn" data-act="gen" data-kind="application" data-k="${esc(key)}" ${busy?'disabled':''}>Draft application text</button>
       <span class="hint">Local model takes 1–3 min each; you can keep working. For best results use the Claude API. Always edit your resume before sending.</span>
@@ -573,12 +657,31 @@ function verHTML(key, d){
       ${d.notes?.length?`<div class="hint">Writer's notes:<ul>${d.notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul></div>`:''}
       ${S.show[d.id]?`<pre>${esc(d.text)}</pre>`:''}`;
   }
-  return `<div class="ver"><div class="vh"><b>${d.kind==='application'?'Application text':'Resume draft'} #${d.id}</b><span class="hint">${esc(d.provider==='anthropic'?'Claude API':'Local')} · ${esc(d.model)} · ${fmtTime(d.created)}</span>${st}
+  return `<div class="ver"><div class="vh"><b>${d.kind==='application'?'Application text':'Resume draft'} #${d.id}</b><span class="hint">${esc(d.provider==='anthropic'?'Claude API':'Local')} · ${esc(d.model)} · ${fmtTime(d.created)}${d.template?' · follows '+esc(d.template):''}</span>${st}
     <span style="flex:1"></span><button class="linkbtn" data-act="del" data-id="${d.id}" data-k="${esc(key)}">Delete</button></div>${body}</div>`;
 }
 async function onAct(t){
   const a = t.dataset.act, key = t.dataset.k, id = +t.dataset.id;
   try{
+    if(a==='q_linkedin'){
+      const on = t.checked;
+      if(on && !confirm('Include LinkedIn postings?\n\n' + (t.dataset.notice || '') + '\n\nClick OK to confirm you understand. Your confirmation and its time are recorded.')){ t.checked = false; return; }
+      await api('/search/linkedin', {on, confirmed: on});
+      toast(on ? 'LinkedIn postings on — title, company and link only' : 'LinkedIn postings off'); renderSearch(); return;
+    }
+    if(a==='j_close' || a==='j_reopen'){
+      const r = await fetch('/jobs/close', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({job_key:key, closed: a==='j_close'})});
+      if(!r.ok) throw new Error('save failed');
+      toast(a==='j_close' ? 'Marked closed' : 'Reopened'); await load(); return;
+    }
+    if(a==='pass_cancel'){ S.passing = null; render(); return; }
+    if(a==='pass_save' || a==='pass_skip'){
+      const box = t.closest('.passbox');
+      const reasons = a==='pass_save' ? [...box.querySelectorAll('[data-pr]:checked')].map(x=>x.dataset.pr) : [];
+      const note = a==='pass_save' ? (box.querySelector('input[type=text]').value||'').trim() : '';
+      await update(key, {status:'dismissed', viewed:1, reasons, reason_note: note});
+      S.passing = null; render(); toast('Moved to Not for me'); return;
+    }
     if(a==='p_fiton'){
       t.disabled = true;
       const prov = (S.settings && S.settings.provider === 'ollama') ? 'ollama' : 'anthropic';
@@ -598,6 +701,13 @@ async function onAct(t){
       await api('/jobs/rate', {job_key:key}); toast('Rating… takes about a minute on the local model');
       S.fitState = {running:true, done:0, total:1}; setTimeout(load, 20000); return;
     }
+    if(a==='rate_jd'){
+      const jd = (S.jd[key]||'').trim();
+      if(jd.length < 200){ toast('Paste the job description from LinkedIn first'); return; }
+      await api('/jobs/rate', {job_key:key, jd_text: jd});
+      const j = S.jobs.find(x=>x.job_key===key); if(j) j.has_description = true;
+      toast('Rating with the description…'); S.fitState = {running:true, done:0, total:1}; setTimeout(load, 15000); render(); return;
+    }
     if(a==='fetchjd'){
       t.disabled = true; S.jdMsg[key] = {ok:true, text:'Fetching…'}; refreshPanel(key);
       const r = await api('/drafts/fetch-jd', {job_key:key, force:(S.jd[key]||'').trim()!==''});
@@ -609,7 +719,7 @@ async function onAct(t){
       const prov = S.prov[key] || (S.settings && S.settings.provider) || 'ollama';
       if(!(S.jd[key]||'').trim() && !confirm('No job description yet. Draft from the title and company only?')) return;
       const kind = t.dataset.kind || 'resume';
-      await api('/drafts/create', {job_key:key, jd_text:S.jd[key]||'', provider:prov, kind, questions:S.scr[key]||''});
+      await api('/drafts/create', {job_key:key, jd_text:S.jd[key]||'', provider:prov, kind, questions:S.scr[key]||'', template:S.tpl[key]||''});
       toast(kind==='application' ? 'Application text queued' : 'Resume draft queued'); await refreshDrafts(key);
     }
     if(a==='view'){ S.show[id] = !S.show[id]; refreshPanel(t.closest('.dpanel').id.slice(3)); }
@@ -751,7 +861,7 @@ async function uploadResumes(e){
   for(const file of e.target.files){
     if(!file.name.toLowerCase().endsWith('.docx')){ toast(file.name+': only .docx'); continue; }
     const b64 = await new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result.split(',')[1]); fr.onerror=rej; fr.readAsDataURL(file); });
-    try{ await api('/profile/upload', {filename:file.name, data_b64:b64}); toast('Uploaded '+file.name); }catch(err){ toast(file.name+': '+err.message); }
+    try{ await api('/profile/upload', {filename:file.name, data_b64:b64}); toast('Uploaded '+file.name); S.resumeList = null; }catch(err){ toast(file.name+': '+err.message); }
   }
   renderProfile();
 }
@@ -763,8 +873,8 @@ async function onProfileAct(a, t){
     try{ const d = await api('/profile'); const n = $('#homeNote'); if(n) n.innerHTML = homeNoteHTML(d.home_read); }catch{}
   }
   if(a==='p_saveinv'){ await api('/profile/save', {inventory:$('#inv').value}); $('#invstat').textContent = 'Saved · '+$('#inv').value.length.toLocaleString()+' characters'; toast('Inventory saved'); }
-  if(a==='p_tpl'){ await api('/profile/set-template', {name:t.dataset.name}); toast('Layout template set'); }
-  if(a==='p_delres'){ if(!confirm('Remove '+t.dataset.name+'?')) return; await api('/profile/delete-resume', {name:t.dataset.name}); renderProfile(); }
+  if(a==='p_tpl'){ await api('/profile/set-template', {name:t.dataset.name}); toast('Layout template set'); S.resumeList = null; }
+  if(a==='p_delres'){ if(!confirm('Remove '+t.dataset.name+'?')) return; await api('/profile/delete-resume', {name:t.dataset.name}); S.resumeList = null; renderProfile(); }
   if(a==='p_buildinv'){ await api('/profile/build-inventory', {provider:$('#invprov').value}); toast('Inventory draft queued'); renderProfileKeep(); }
   if(a==='p_useinv' || a==='p_appinv'){
     const inv = S.profile.inventory_drafts[0].text;
@@ -1052,6 +1162,7 @@ async function renderSearch(keep){
       <div class="row"><button class="btn primary" data-act="q_why">Check this job</button>${S.whyHTML?'<button class="linkbtn" data-act="q_whyclear">Clear</button>':''}</div>
       <div id="w_out">${S.whyHTML||''}</div>
     </section>
+    ${closuresHTML(d.closures)}
     <section class="box"><h2>Schedule</h2>
       <div class="grid2">
         <label class="radio"><input type="checkbox" id="q_enabled" ${c.enabled?'checked':''}> Run automatically</label>
@@ -1104,6 +1215,10 @@ async function renderSearch(keep){
         <label class="fld">Requests your plan allows per month<input id="q_jbudget" type="number" min="10" value="${esc(c.jsearch_budget||200)}"><span class="hint">The free plan allows 200. Searches take turns if there are more than fit.</span></label>
         <details class="howto full"><summary>Advanced: exact searches</summary>
           <label class="fld">Run exactly as typed, one per line ({home} = your home town). Used in addition to the jobs above and counted in the same limit.<textarea id="q_jq" rows="3" placeholder="director it in Orlando, FL">${esc(c.jsearch_queries||'')}</textarea></label></details>
+        <div class="fld full linkedin"><label class="radio"><input type="checkbox" data-act="q_linkedin" data-notice="${esc(d.linkedin_notice||'')}" ${c.jsearch_linkedin?'checked':''}> <b>Include LinkedIn postings</b> — title, company and a link only</label>
+          <span class="hint">${c.jsearch_linkedin
+            ? `On since ${esc(niceDay((c.jsearch_linkedin_ack||'').slice(0,10)))}. LinkedIn jobs show only their title, company and an <i>Also listed on LinkedIn</i> link; paste the description yourself in Resume &amp; apply.`
+            : 'Off. LinkedIn results are left out before anything is saved or shown. LinkedIn doesn’t permit showing its job details here, so turning this on shows only the title, company and a link.'}</span></div>
         <label class="fld full">Skip these re-posting sites (one per line)<textarea id="q_jskip" rows="4">${esc(c.jsearch_skip_sites)}</textarea>
           <span class="hint">Some sites copy jobs from elsewhere; their copies are often out of date and sometimes fake. Links to these sites are never used — a job is kept only if the employer's own link or a known board (LinkedIn, Indeed…) is available.</span></label>
       </div></section>

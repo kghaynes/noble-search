@@ -17,6 +17,7 @@ except ImportError:  # pragma: no cover
     ZoneInfo = None
 
 import applog
+import closures
 import fit
 import notify
 import profile_store as ps
@@ -49,6 +50,8 @@ DEFAULTS = {
     "title_examples": "",          # titles the person wants to catch (from ✨ Suggest titles), used by the check
     "jsearch_pages": 1,
     "jsearch_skip_sites": sources.DEFAULT_JSEARCH_SKIP,
+    "jsearch_linkedin": False,     # LinkedIn results: off by default; on only after the person confirms the notice
+    "jsearch_linkedin_ack": "",    # when they confirmed it (UTC)
     "fit_provider": "anthropic",
     "email_enabled": False,
     "email_to": "",
@@ -112,8 +115,8 @@ def save_config(new):
             cur["jsearch_what"], cur["jsearch_queries"] = "\n".join(ph), "\n".join(ex)
         # job phrases last: lines that name another place move into the exact searches
         for k, v in sorted((new or {}).items(), key=lambda kv: kv[0] == "jsearch_what"):
-            if k not in DEFAULTS:
-                continue
+            if k not in DEFAULTS or k in ("jsearch_linkedin", "jsearch_linkedin_ack"):
+                continue   # LinkedIn is switched only through set_linkedin(), which records the confirmation
             if k in SECRETS:
                 v = str(v or "").strip()
                 if not v or v.startswith("••••"):
@@ -172,6 +175,35 @@ def save_config(new):
             json.dump(cur, f, indent=2)
         os.chmod(tmp, 0o600)
         os.replace(tmp, SEARCH_JSON)
+    return get_config()
+
+
+LINKEDIN_NOTICE = ("LinkedIn does not permit this application to show the description or details of its jobs — only "
+                   "the title, the company and a link to the posting. To use a LinkedIn job in the resume and keyword "
+                   "check, open it on LinkedIn, copy the description, and paste it into Resume & apply.")
+
+
+def set_linkedin(on, confirmed=False):
+    """Turn LinkedIn results on (only with the person's confirmation of LINKEDIN_NOTICE, which is recorded) or off."""
+    if on and not confirmed:
+        raise ValueError("Please read and confirm the LinkedIn notice first.")
+    with _cfg_lock:
+        try:
+            with open(SEARCH_JSON, encoding="utf-8") as f:
+                cur = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            cur = {}
+        cur["jsearch_linkedin"] = bool(on)
+        if on:
+            cur["jsearch_linkedin_ack"] = _now()
+        os.makedirs(os.path.dirname(SEARCH_JSON), exist_ok=True)
+        tmp = SEARCH_JSON + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(cur, f, indent=2)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, SEARCH_JSON)
+    applog.info("linkedin", "LinkedIn results turned ON — the person confirmed: title, company and link only"
+                if on else "LinkedIn results turned off")
     return get_config()
 
 
@@ -260,6 +292,8 @@ def merge_rows(rows, listing_fields):
                 continue
             ex = dict(ex)
             sets = {}
+            if closures.should_reopen(ex, r):   # taken down, now listed again: a repost
+                closures.reopen_in(conn, key)
             for f in listing_fields:
                 new, old = str(r.get(f) or ""), str(ex.get(f) or "")
                 if not new or new == old:
@@ -358,14 +392,16 @@ def run(trigger="manual", listing_fields=None, only=None):
         boards = cfg.get("boards") or []
         if only:
             boards = [b for b in boards if b.get("name") in only]
-        steps = []
+        steps = []   # (name, kind, settings fingerprint, reader)
         if not only or "USAJOBS" in only:
-            steps.append(("USAJOBS", lambda: sources.read_usajobs(cfg, ctx)))
+            steps.append(("USAJOBS", "usajobs", usajobs_fingerprint(cfg, ctx), lambda: sources.read_usajobs(cfg, ctx)))
         if not only or "JSearch (job boards)" in only:
-            steps.append(("JSearch (job boards)", lambda: sources.read_jsearch(cfg, ctx)))
-        steps += [(b.get("name"), (lambda b=b: sources.run_board(b, ctx))) for b in boards]
+            steps.append(("JSearch (job boards)", "jsearch", "", lambda: sources.read_jsearch(cfg, ctx)))
+        steps += [(b.get("name"), "board", f"{b.get('url')}|{b.get('type') or 'auto'}|{ctx.max_age}",
+                   (lambda b=b: sources.run_board(b, ctx))) for b in boards]
         _state.update(steps=len(steps), step=0, t0=time.time())
-        for i, (name, step) in enumerate(steps):
+        closed_total = 0
+        for i, (name, kind, fp, step) in enumerate(steps):
             if sources.STOP.is_set():
                 break
             _state.update(current=name, step=i)
@@ -374,6 +410,23 @@ def run(trigger="manual", listing_fields=None, only=None):
             for err in (rows_st[1].get("errors") or [])[:3]:
                 applog.warn("search", f"{name}: {err}")
             save(*rows_st)
+            if not sources.STOP.is_set():   # postings this source no longer lists → closed
+                try:
+                    gone, why = closures.detect(name, kind, rows_st[1], [e["t"] for e in ctx.seen if e["s"] == name],
+                                                fp, ctx.max_age, run_id)
+                except Exception as e:  # noqa: BLE001 — never let this break a search
+                    gone, why = [], str(e)
+                    applog.error("closed", f"{name}: {e}")
+                rows_st[1]["closed"] = len(gone)
+                closed_total += len(gone)
+        if not sources.STOP.is_set():
+            _state.update(current="checking watchlist links")
+            try:
+                closed_total += len(closures.link_check(run_id))
+            except Exception as e:  # noqa: BLE001
+                applog.error("closed", f"link check: {e}")
+        with lock, db_fn() as conn:
+            conn.execute("UPDATE search_runs SET detail=? WHERE id=?", (json.dumps(detail), run_id))
         save_titles(run_id, ctx.seen)
         stopped = sources.STOP.is_set()
         bad = sum(1 for d in detail if not d.get("ok"))
@@ -381,6 +434,7 @@ def run(trigger="manual", listing_fields=None, only=None):
         with lock, db_fn() as conn:
             conn.execute("UPDATE search_runs SET status=?, finished=? WHERE id=?", (stat, _now(), run_id))
         applog.info("search", f"{trigger.title()} run {stat}: {total_found} matching, {total_added} new, {total_updated} updated"
+                              + (f", {closed_total} closed" if closed_total else "")
                               + (f", {bad} source(s) failed" if bad else ""))
         if stopped:   # keep what was found and rate it, but no summary email for a stopped run
             if cfg.get("fit_provider", "anthropic") != "off" and new_keys:
@@ -395,6 +449,12 @@ def run(trigger="manual", listing_fields=None, only=None):
         _state.update(running=False, current="", started=None, step=0, steps=0, t0=None)
         sources.STOP.clear()
         _run_lock.release()
+
+
+def usajobs_fingerprint(cfg, ctx):
+    """USAJOBS settings that change which announcements come back — a change means no closures that day."""
+    return json.dumps([cfg.get("usajobs_nationwide"), cfg.get("usajobs_agencies"), cfg.get("usajobs_min_grade"),
+                       ctx.home_city, ctx.allow_local, ctx.allow_remote, ctx.max_age], default=str)
 
 
 def settle_titles(ctx, source, rows):

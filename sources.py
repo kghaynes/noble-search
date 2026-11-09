@@ -1282,6 +1282,40 @@ def jsearch_link(x, skip=()):
     return direct or main or (opts[0]["apply_link"] if opts else "")
 
 
+LINKEDIN_SOURCE = "JSearch (LinkedIn)"
+
+
+def _is_linkedin_url(url):
+    host = urllib.parse.urlparse(url or "").netloc.lower().split(":")[0]
+    return host == "linkedin.com" or host.endswith(".linkedin.com")
+
+
+def is_linkedin(x):
+    """A job-board result that comes from LinkedIn (its publisher, or its only usable link)."""
+    return "linkedin" in str(x.get("job_publisher") or "").lower() or _is_linkedin_url(x.get("job_apply_link"))
+
+
+def linkedin_url(x):
+    """The LinkedIn posting link for a LinkedIn result ('' if none)."""
+    cands = [x.get("job_apply_link")] + [o.get("apply_link") for o in (x.get("apply_options") or [])]
+    return next((u for u in cands if _is_linkedin_url(u)), "") or (x.get("job_apply_link") or "")
+
+
+def linkedin_row(x):
+    """LinkedIn doesn't permit showing its job details here, so a LinkedIn result keeps only the title,
+    the company and a link to the posting. Nothing else from LinkedIn is stored or shown."""
+    return {"company": (x.get("employer_name") or "").strip(), "title": re.sub(r"\s+", " ", x.get("job_title") or "").strip(),
+            "location": "", "work_mode": "", "employment_type": "", "posted_date": "", "closing_date": "",
+            "salary": "", "clearance": "", "sources": LINKEDIN_SOURCE, "link": "", "linkedin_link": linkedin_url(x),
+            "fit": "", "fit_reason": "", "lane": "", "open_status": "Open", "description": ""}
+
+
+def linkedin_only(sources_text):
+    """True when a job's only source is LinkedIn (so nothing but its title, company and link is known)."""
+    parts = [s.strip() for s in str(sources_text or "").replace(";", ",").split(",") if s.strip()]
+    return bool(parts) and all(s == LINKEDIN_SOURCE for s in parts)
+
+
 def jsearch_row(ctx, x, w, skip=()):
     city = ", ".join(filter(None, [x.get("job_city"), x.get("job_state")]))
     loc = city or x.get("job_location") or ""
@@ -1316,7 +1350,9 @@ def read_jsearch(cfg, ctx):
     date_posted = "week" if ctx.max_age <= 7 else "month"
     seen, rows, kept_ids = set(), [], set()
     skip = _skip_list(cfg)
+    linkedin_on = bool(cfg.get("jsearch_linkedin"))
     st["skipped_sites"] = 0
+    st["linkedin_dropped"] = 0
     st["lines"] = []
     if plan["rotating"]:
         st["note"] = f"Ran {len(plan['today'])} of {plan['total']} searches today (they take turns to stay within {plan['budget']} requests a month)."
@@ -1342,6 +1378,9 @@ def read_jsearch(cfg, ctx):
                     line["overlap"] += 1   # useful, but an earlier search already kept it
                 continue
             seen.add(jid)
+            if is_linkedin(x) and not linkedin_on:
+                st["linkedin_dropped"] += 1   # LinkedIn is off: dropped before anything is kept or shown
+                continue
             st["scanned"] += 1
             if not ctx.title_ok(x.get("job_title")):
                 continue
@@ -1353,6 +1392,11 @@ def read_jsearch(cfg, ctx):
             is_remote = bool(x.get("job_is_remote")) or "remote" in str(x.get("work_arrangement") or "").lower()
             loc = ", ".join(filter(None, [x.get("job_city"), x.get("job_state"), x.get("job_country")])) or x.get("job_location") or ""
             w = ctx.where(loc, remote_flag=is_remote, loose_remote=False)
+            if w and is_linkedin(x):
+                rows.append({**linkedin_row(x), "_line": li})
+                line["kept"] += 1
+                kept_ids.add(jid)
+                continue
             if w:
                 if not jsearch_link(x, skip):
                     st["skipped_sites"] += 1   # only re-posting sites had it
@@ -1367,6 +1411,8 @@ def read_jsearch(cfg, ctx):
     st["kept"] = len(rows)
     if st["skipped_sites"]:
         st["note"] = ((st.get("note") or "") + f" {st['skipped_sites']} skipped: only listed on re-posting sites you chose to skip.").strip()
+    if st["linkedin_dropped"]:
+        st["note"] = ((st.get("note") or "") + f" {st['linkedin_dropped']} LinkedIn result(s) left out (LinkedIn is off).").strip()
     st["seconds"] = round(time.time() - t0, 1)
     return rows, st
 

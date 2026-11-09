@@ -18,6 +18,7 @@ from datetime import date, datetime
 from email.message import EmailMessage
 from email.utils import formataddr, make_msgid
 
+import closures
 import fit
 import sources
 
@@ -117,7 +118,7 @@ def _closing_soon(exclude=()):
         rows = [dict(x) for x in conn.execute(
             "SELECT * FROM jobs WHERE closing_date != '' AND closing_date IS NOT NULL AND COALESCE(status,'') != 'dismissed' "
             "AND (fit IN ('High','Med') OR status IN ('interested','applied','interviewing','offer'))")]
-    out = [(d, j) for j in rows for d in [_closing(j)] if d is not None and j["job_key"] not in exclude]
+    out = [(d, j) for j in rows for d in [_closing(j)] if d is not None and j["job_key"] not in exclude and not j.get("closed_on")]
     out.sort(key=lambda x: x[0])
     return out[:8]
 
@@ -149,6 +150,21 @@ def build(run, cfg):
     more_all = ranked[TOP_PICKS:] + unrated
     more, extra = more_all[:MORE_MAX], len(more_all) - MORE_MAX
     soon = _closing_soon()
+    speed = closures.employer_speed()
+    gone = closures.closed_in_run(run.get("id"))
+    gone_watch = [c for c in gone if c.get("status") in closures.WATCH]
+    gone_other = len(gone) - len(gone_watch)
+
+    def fast(j):   # "⚡ closes in ~5 days" for employers whose postings come down quickly
+        d = closures.fast_days(j.get("company"), speed)
+        return f"⚡ {j['company']} usually closes in ~{d} days" if d is not None else ""
+
+    def gone_line(c):
+        up = f"up {c['days_up']} days" if c.get("days_up") is not None else ""
+        early = f"{c['early_days']} days before its deadline" if c.get("early_days") else ""
+        what = "likely filled — follow up or move on" if c.get("status") in ("applied", "interviewing", "offer") \
+            else "closed before you applied"
+        return ", ".join(x for x in (up, early) if x), what
     by_source = [f"{d.get('name')} {d.get('added')}" for d in detail if int(d.get("added") or 0) > 0]
     s1 = f"{len(jobs)} new today ({', '.join(parts)})." if jobs else "No new matching jobs today."
     s2 = [f"{scanned:,} listings checked across {nsrc} sources"] if scanned else []
@@ -169,7 +185,8 @@ def build(run, cfg):
             why, gap = split_reason(j.get("fit_reason"))
             closes = _closes_text(_closing(j), j)
             t.append(f"{i}. {j['title']} — {j['company']} — {meta(j)} — {j['fit']}."
-                     + (f" {why}" if why else "") + (f" Gap: {gap}" if gap else "") + (f" ({closes})" if closes else ""))
+                     + (f" {why}" if why else "") + (f" Gap: {gap}" if gap else "") + (f" ({closes})" if closes else "")
+                     + (f" {fast(j)} — apply soon." if fast(j) else ""))
             t.append(f"   {j.get('link') or url}")
         t.append("")
     if more:
@@ -180,6 +197,14 @@ def build(run, cfg):
         t.append("")
     if low:
         t += [f"{len(low)} Low-fit job{'s' if len(low) > 1 else ''} added to your dashboard.", ""]
+    if gone_watch:
+        t.append("Closed since the last search (your watchlist)")
+        for c in gone_watch:
+            when, what = gone_line(c)
+            t.append(f"- {c['title']} — {c['company']} ({c['status']}): {what}" + (f"; {when}" if when else "") + ".")
+        t.append("")
+    if gone_other:
+        t += [f"{gone_other} other posting{'s' if gone_other > 1 else ''} in your dashboard closed since the last search.", ""]
     if soon:
         t.append("Closing within 7 days: " + "; ".join(f"{j['title']} — {j['company']} ({_closes_text(d, j)})" for d, j in soon) + ".")
         t.append("")
@@ -209,7 +234,9 @@ def build(run, cfg):
         d = _closing(j)
         if d is not None:
             chips += chip(_closes_text(d, j), "#b42318", "#fde8e7")
-        link = j.get("link") or url
+        if fast(j):
+            chips += chip(fast(j), "#7a2e0e", "#fff1e0")
+        link = j.get("link") or j.get("linkedin_link") or url
         loc = " · ".join(e(x) for x in [j.get("location"), j.get("work_mode")] if x)
         return f"""<tr><td style="padding:16px 0;border-top:1px solid {LINE}">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
@@ -234,7 +261,7 @@ def build(run, cfg):
         li = "".join(
             f'<tr><td style="padding:9px 0;border-top:1px solid {LINE};{F};font-size:14px;line-height:1.4;color:{INK}">'
             f'{chip((j.get("fit") or "Not rated") + (" fit" if j.get("fit") else ""), *pill.get(j.get("fit") or "", pill[""]))}'
-            f'<a href="{e(j.get("link") or url)}" style="color:{NAVY};font-weight:600;text-decoration:none">{e(j["title"])}</a>'
+            f'<a href="{e(j.get("link") or j.get("linkedin_link") or url)}" style="color:{NAVY};font-weight:600;text-decoration:none">{e(j["title"])}</a>'
             f' <span style="color:{MUTED}">— {e(j["company"])}{" · " + e(meta(j)) if meta(j) else ""}</span></td></tr>' for j in more)
         if extra > 0:
             li += (f'<tr><td style="padding:9px 0;border-top:1px solid {LINE};{F};font-size:14px;color:{MUTED}">'
@@ -245,9 +272,18 @@ def build(run, cfg):
                     f'added to your dashboard{" (" + ", ".join(e(c) for c in list(dict.fromkeys(j["company"] for j in low))[:4]) + ("…" if len(set(j["company"] for j in low)) > 4 else "") + ")" if low else ""}.</td></tr>')
     if not jobs:
         rows.append(f'<tr><td style="padding:18px 0;{F};font-size:15px;color:{INK}">No new matching jobs today. Your watchlist is unchanged.</td></tr>')
+    if gone_watch or gone_other:
+        li = "".join(
+            f'<div style="margin:4px 0"><a href="{e(c.get("link") or url)}" style="color:{NAVY};text-decoration:none;font-weight:600">{e(c["title"])}</a>'
+            f' — {e(c["company"])} <span style="color:{MUTED}">({e(c["status"])})</span><br><b>{e(gone_line(c)[1][:1].upper() + gone_line(c)[1][1:])}</b>'
+            f'{" · " + e(gone_line(c)[0]) if gone_line(c)[0] else ""}</div>' for c in gone_watch)
+        if gone_other:
+            li += f'<div style="margin:6px 0 0;color:{MUTED}">{gone_other} other posting{"s" if gone_other > 1 else ""} in your dashboard closed since the last search.</div>'
+        rows.append(f'<tr><td style="padding:20px 0 0"><div style="background:#fdeeee;border:1px solid #f1c4c0;border-radius:10px;padding:12px 14px;{F};font-size:14px;line-height:1.45;color:{INK}">'
+                    f'<div style="font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#b42318;margin-bottom:4px">Closed since the last search</div>{li}</div></td></tr>')
     if soon:
         li = "".join(f'<div style="margin:4px 0"><b>{e(_closes_text(d, j)[:1].upper() + _closes_text(d, j)[1:])}:</b> '
-                     f'<a href="{e(j.get("link") or url)}" style="color:{NAVY};text-decoration:none">{e(j["title"])}</a> — {e(j["company"])}</div>' for d, j in soon)
+                     f'<a href="{e(j.get("link") or j.get("linkedin_link") or url)}" style="color:{NAVY};text-decoration:none">{e(j["title"])}</a> — {e(j["company"])}</div>' for d, j in soon)
         rows.append(f'<tr><td style="padding:20px 0 0"><div style="background:#fff7e6;border:1px solid #f3dca6;border-radius:10px;padding:12px 14px;{F};font-size:14px;line-height:1.45;color:{INK}">'
                     f'<div style="font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#8a5a00;margin-bottom:4px">Closing within 7 days</div>{li}</div></td></tr>')
     foot = []

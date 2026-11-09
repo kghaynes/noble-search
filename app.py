@@ -25,6 +25,7 @@ import llm
 import profile_store as ps
 import resume
 import applog
+import closures
 import discover
 import insight
 import search
@@ -40,7 +41,7 @@ STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 LISTING_FIELDS = [
     "title", "company", "location", "work_mode", "employment_type", "posted_date",
     "closing_date", "salary", "clearance", "sources", "link", "fit", "fit_reason",
-    "lane", "open_status", "description",
+    "lane", "open_status", "description", "linkedin_link",
 ]
 USER_STATUSES = {"", "interested", "applied", "interviewing", "offer", "dismissed"}
 WATCH_STATUSES = ("interested", "applied", "interviewing", "offer")
@@ -128,16 +129,57 @@ def purge_expired():
     return len(gone)
 
 
+def linkedin_cleanup():
+    """Once, after upgrading to the LinkedIn rules: jobs known only from LinkedIn lose every detail but the title,
+    company and link (watchlist jobs) or are removed with their drafts (the rest; they come back in the short form
+    if LinkedIn is turned on)."""
+    with _db_lock, db() as conn:
+        if conn.execute("SELECT v FROM meta WHERE k='linkedin_cleanup_v1'").fetchone():
+            return 0
+        rows = [dict(r) for r in conn.execute("SELECT job_key, status, sources, link FROM jobs WHERE instr(sources, 'LinkedIn') > 0")]
+        only = [r for r in rows if sources.linkedin_only(r["sources"])]
+        drop = [r["job_key"] for r in only if r["status"] not in WATCH_STATUSES]
+        for r in only:
+            if r["status"] in WATCH_STATUSES:
+                conn.execute("""UPDATE jobs SET location='', work_mode='', employment_type='', posted_date='', closing_date='',
+                                salary='', clearance='', description='', fit_reason='', link='', linkedin_link=? WHERE job_key=?""",
+                             (r["link"] or "", r["job_key"]))
+        conn.execute("INSERT INTO meta(k, v) VALUES('linkedin_cleanup_v1', ?)", (now_iso(),))
+    for key in drop:
+        drafts.delete_for_job(key)
+    if drop:
+        with _db_lock, db() as conn:
+            conn.executemany("DELETE FROM jobs WHERE job_key=?", [(k,) for k in drop])
+    if only:
+        applog.info("linkedin", f"LinkedIn rules applied: {len(drop)} LinkedIn-only job(s) removed, "
+                                f"{len(only) - len(drop)} watchlist job(s) reduced to title, company and link")
+    return len(only)
+
+
 def list_jobs():
     with _db_lock, db() as conn:
         rows = [dict(r) for r in conn.execute("SELECT * FROM jobs")]
+    if not search.get_config().get("jsearch_linkedin"):   # LinkedIn off: nothing from LinkedIn reaches the screen
+        rows = [r for r in rows if not sources.linkedin_only(r.get("sources"))]
+        for r in rows:
+            r["linkedin_link"] = ""
+    for r in rows:
+        r["linkedin_only"] = sources.linkedin_only(r.get("sources"))
     for r in rows:
         r["has_description"] = bool(r.pop("description", ""))
     try:   # same town / home-state rules the search uses, so "Near home" works for any state
         ctx = sources.Context(search.get_config(), ps.get_profile())
     except Exception:  # noqa: BLE001
         ctx = None
+    speed = closures.employer_speed()
     for r in rows:
+        if r.get("closed_on"):   # "Closed Nov 7 · was up 4 days · 12 days before its deadline"
+            closed = datetime.fromisoformat(r["closed_on"][:10]).date()
+            r["days_up"], r["early_days"] = closures.days_up(r, closed), closures.early_days(r, closed)
+            r["closed_how"] = closures.DETECTED_BY.get(r.get("closed_by") or "", "")
+            r["fast_days"] = None
+        else:
+            r["fast_days"] = closures.fast_days(r.get("company"), speed)
         mode = f"{r.get('work_mode') or ''} {r.get('location') or ''}".lower()
         r["near_home"] = bool(ctx) and "remote" not in mode and "relocation required" not in mode and \
             ctx.where(r.get("location") or "", loose_remote=False) == "local"
@@ -167,16 +209,22 @@ def update_job(key, data):
     sets.append("updated_at=?")
     args.append(now_iso())
     with _db_lock, db() as conn:
+        before = conn.execute("SELECT * FROM jobs WHERE job_key=?", (key,)).fetchone()
         cur = conn.execute(f"UPDATE jobs SET {', '.join(sets)} WHERE job_key=?", args + [key])
         if cur.rowcount == 0:
             raise KeyError(key)
+    # Watchlist job → "Not for me": keep why (certifications, skills, salary, location, other).
+    # Dismissing from the Inbox is never asked about, so nothing is recorded for it.
+    if before and "reasons" in data and str(data.get("status") or "").lower() == "dismissed" \
+            and before["status"] in WATCH_STATUSES:
+        closures.record_pass(dict(before), data.get("reasons") or [], data.get("reason_note") or "")
 
 
 def export_csv():
     rows = list_jobs()
     buf = io.StringIO()
     fields = ["status", "notes", "posted_date", "closing_date", "title", "company", "location",
-              "work_mode", "salary", "clearance", "fit", "fit_reason", "link", "first_seen"]
+              "work_mode", "salary", "clearance", "fit", "fit_reason", "link", "linkedin_link", "first_seen", "closed_on", "closed_by"]
     w = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
     w.writeheader()
     for r in rows:
@@ -410,7 +458,8 @@ class Handler(BaseHTTPRequestHandler):
                                     "fit": fit.status(), "unrated": len(fit.pending_keys()),
                                     "jsearch_monthly": search.jsearch_monthly_estimate(cfg),
                                     "jsearch_publishers": jsearch_publishers(),
-                                    "notify": search.notify.status(),
+                                    "notify": search.notify.status(), "closures": closures.summary(),
+                                    "linkedin_notice": search.LINKEDIN_NOTICE,
                                     "readers": sources.READER_LABELS, "progress": progress(),
                                     "title_presets": {k: {"label": l, "include": v} for k, (l, v) in sources.TITLE_PRESETS.items()}})
         if path == "/health":
@@ -449,6 +498,14 @@ class Handler(BaseHTTPRequestHandler):
             return {"ok": True, "config": search.save_config(data)}
         if path == "/jobs/rate":
             key = str(data.get("job_key") or "")
+            jd = str(data.get("jd_text") or "").strip()
+            if key and jd:   # a description you pasted (e.g. from LinkedIn) — saved with the job for a full rating
+                if len(jd) < 200:
+                    raise ValueError("Paste the full job description first")
+                with _db_lock, db() as conn:
+                    cur = conn.execute("UPDATE jobs SET description=?, updated_at=? WHERE job_key=?", (jd[:30000], now_iso(), key))
+                    if cur.rowcount == 0:
+                        raise ValueError("unknown job")
             try:
                 if key:
                     fit.run_async([key], data.get("provider"), force=True)
@@ -470,6 +527,8 @@ class Handler(BaseHTTPRequestHandler):
             return insight.why_not(data)
         if path == "/search/suggest":
             return suggest.suggest(str(data.get("what") or ""))
+        if path == "/search/linkedin":
+            return {"ok": True, "config": search.set_linkedin(bool(data.get("on")), bool(data.get("confirmed")))}
         if path == "/search/stop":
             return {"ok": search.stop()}
         if path == "/search/run":
@@ -481,9 +540,12 @@ class Handler(BaseHTTPRequestHandler):
             return {"ok": True}
         if path == "/drafts/fetch-jd":
             with _db_lock, db() as conn:
-                row = conn.execute("SELECT link, description FROM jobs WHERE job_key=?", (data.get("job_key"),)).fetchone()
+                row = conn.execute("SELECT link, description, linkedin_link FROM jobs WHERE job_key=?", (data.get("job_key"),)).fetchone()
             if row and (row["description"] or "").strip() and not data.get("force"):
                 return {"ok": True, "text": row["description"], "reason": "", "source": "daily search"}
+            if row and not row["link"] and row["linkedin_link"]:
+                return {"ok": False, "text": "", "source": "posting", "reason": search.LINKEDIN_NOTICE.split(" — ")[0] +
+                        ". Open the posting on LinkedIn, copy the description, and paste it here."}
             ok, text, reason = resume.fetch_posting(row["link"] if row else "")
             return {"ok": ok, "text": text, "reason": reason, "source": "posting"}
         if path == "/drafts/create":
@@ -493,8 +555,13 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError("unknown job")
             kind = data.get("kind") if data.get("kind") in ("resume", "application") else "resume"
             qs = [q.strip() for q in str(data.get("questions") or "").splitlines() if q.strip()][:25]
-            return {"ok": True, "id": drafts.create(key, kind, data.get("jd_text", ""), data.get("provider"),
-                                                     {"questions": qs} if qs else None)}
+            extra = {"questions": qs} if qs else {}
+            tpl = str(data.get("template") or "")
+            if tpl:
+                if tpl not in ps.resume_names():
+                    raise ValueError("That resume isn't in your Profile any more")
+                extra["template"] = tpl
+            return {"ok": True, "id": drafts.create(key, kind, data.get("jd_text", ""), data.get("provider"), extra or None)}
         if path == "/drafts/delete":
             drafts.delete(int(data.get("id") or 0))
             return {"ok": True}
@@ -525,6 +592,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": False, "detail": str(e)})
         if res is not None:
             return self._json(200, res)
+        if path == "/jobs/close":
+            try:
+                closures.set_closed(str(data.get("job_key", "")), bool(data.get("closed", True)))
+            except KeyError:
+                return self._json(404, {"error": "unknown job"})
+            return self._json(200, {"ok": True})
         if path == "/jobs/mark-all-viewed":
             with _db_lock, db() as conn:
                 conn.execute("UPDATE jobs SET viewed=1")
@@ -536,6 +609,11 @@ def main():
     init_db()
     drafts.init()
     search.init(db, _db_lock)
+    closures.init(db, _db_lock)
+    try:
+        linkedin_cleanup()
+    except Exception as exc:  # noqa: BLE001
+        applog.error("linkedin", f"cleanup: {exc}")
     insight.init(db, _db_lock)
     search.notify.init(db, _db_lock)
     fit.init(db, _db_lock)
