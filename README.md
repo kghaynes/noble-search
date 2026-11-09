@@ -523,9 +523,28 @@ Full details: [docs/closed-postings.md](docs/closed-postings.md).
 
 **What leaves your computer:**
 
-- **To Anthropic (the Claude API),** when rating a job or writing a draft: your profile, career inventory and resume text, plus the job posting. Anthropic's commercial terms say API data is not used to train their models: <https://www.anthropic.com/legal/commercial-terms>. If you want nothing sent out, use a [local model](#use-a-local-ai-model-instead-of-claude-ollama).
-- **To job sites, USAJOBS and JSearch:** only searches (job titles and your town), never your profile.
+- **To Anthropic (the Claude API),** when rating a job or writing a draft: your profile, career inventory and resume text, plus the job posting. Your personal details are hidden first (see below). If you want nothing sent out, use a [local model](#use-a-local-ai-model-instead-of-claude-ollama).
+- **To job sites, USAJOBS and JSearch:** only searches (job titles and your town), never your profile or resume.
 - **To your email provider:** the morning summary.
+
+Full details, including what is stored where and how to delete it, are in **[PRIVACY.md](PRIVACY.md)**.
+
+**Your personal details are hidden from the AI.** Before anything goes to the model, Noble Search:
+
+- **Swaps out your contact details.** Your name, street address, phone number, email and LinkedIn link are replaced with placeholders like `{{NAME}}` and `{{EMAIL}}`. When the reply comes back, the real values are put back in on your computer. The model doesn't need them to rate a job or rewrite your bullets, and your drafts still show your real details. Contact details of other people (say, a recruiter's email in a posting) get their own placeholders and are put back the same way. Your town and state are kept, because fit ratings need them to judge commute and relocation.
+- **Cuts clearance details to level and status.** Your clearance is sent as, for example, "Active TS/SCI". Polygraph type and dates, investigation types and dates (SSBI, T5, reinvestigations) are removed from your profile, resumes and career inventory before sending. A job posting's own requirements (for example "Full Scope Polygraph required") are sent unchanged so the fit rating can still flag them.
+- **Uses only the plain Messages API.** Resume content is never sent through Anthropic's Batch or Files APIs.
+- **Doesn't log what it sends or receives.** The Problems log never holds request or reply text. When a draft fails, the one troubleshooting copy of the model's reply kept in `data/logs/` has your details replaced with placeholders too.
+
+You can turn this off in **Settings → Claude API → Hide my personal details from the AI**. Leave it on unless a draft goes wrong and you need to test without it.
+
+**What Anthropic keeps.** Noble Search uses *your* Anthropic API key, so the data you send is covered by *your* Anthropic account's terms, not by anything the Noble Search author controls:
+
+- By default, Anthropic keeps API requests and replies for up to **30 days**, then deletes them.
+- API data is **not used to train** Anthropic's models ([commercial terms](https://www.anthropic.com/legal/commercial-terms)).
+- Anthropic may keep data **longer if a request is flagged** for a usage-policy review.
+- For **zero retention**, you need your own Zero Data Retention agreement with Anthropic.
+- **Local model (Ollama) mode** sends nothing out: everything stays on your computer.
 
 **Other protections:**
 

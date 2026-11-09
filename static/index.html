@@ -912,6 +912,8 @@ async function renderSettings(){
         <label class="fld">Model for fit rating (runs on every new job — a small model keeps it cheap)<input data-set="anthropic_fit_model" value="${esc(s.anthropic_fit_model)}" list="amodels"></label>
         <datalist id="amodels"><option value="claude-sonnet-5-5"><option value="claude-opus-5-5"><option value="claude-haiku-4-5-20251001"></datalist>
       </div>
+      <label class="radio" style="margin-top:8px"><input type="checkbox" data-set="redact_pii" ${s.redact_pii!==false?'checked':''}> Hide my personal details from the AI (recommended)</label>
+      <div class="hint">Your name, street address, phone, email and LinkedIn link are replaced with placeholders like {{NAME}} before anything is sent, and put back here when the reply comes in. Clearance is sent as level and status only (e.g. "Active TS/SCI"); polygraph and investigation details are left out. Your drafts still show your real details. <a href="https://github.com/kghaynes/noble-search/blob/main/PRIVACY.md" target="_blank" rel="noopener">What happens to your data</a></div>
       <div class="row" style="margin-top:10px"><button class="btn" data-act="s_test" data-p="anthropic">Save &amp; test</button><span class="hint" id="t_anthropic"></span>
         ${s.anthropic_key_set?'<button class="linkbtn" data-act="s_clearkey">Remove key</button>':''}</div></section>
     <details class="box adv" ${(s.provider==='ollama'||c.fit_provider==='ollama')?'open':''}><summary><b>Advanced: run a local model instead (Ollama)</b> <span class="hint">— free and private, but needs a strong graphics card and is much slower</span></summary>
@@ -997,7 +999,7 @@ async function renderSettings(){
   </div>`;
 }
 function collectSettings(){
-  const d = {}; document.querySelectorAll('[data-set]').forEach(el => { if(el.value!=='' || el.dataset.set!=='anthropic_api_key') d[el.dataset.set] = el.value; });
+  const d = {}; document.querySelectorAll('[data-set]').forEach(el => { if(el.type==='checkbox') d[el.dataset.set] = el.checked; else if(el.value!=='' || el.dataset.set!=='anthropic_api_key') d[el.dataset.set] = el.value; });
   const p = document.querySelector('input[name=prov]:checked'); if(p) d.provider = p.value; return d;
 }
 function collectSearchSettings(){
