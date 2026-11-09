@@ -439,7 +439,7 @@ The other two sources:
 LinkedIn doesn't permit apps like this to show the description or details of its jobs, so Noble Search handles LinkedIn results this way:
 
 - **Off (the default):** job-board results published by LinkedIn are dropped inside the search, before anything is saved or shown. The search report says how many were left out.
-- **Turning it on:** Search page → Job-board searches → **Include LinkedIn postings**. A confirmation explains the limits, and the app records that you confirmed, with the time, in the Problems log and in your search settings.
+- **Turning it on:** Search page → Schedule → **Include LinkedIn postings**. A confirmation explains the limits, and the app records that you confirmed, with the time, in the Problems log and in your search settings.
 - **On:** a LinkedIn job keeps only its **title**, its **company**, and an **Also listed on LinkedIn ↗** link. No location, pay, dates, description or other LinkedIn details are stored or shown. To draft a resume or run the keyword check, open the posting on LinkedIn, copy the description, and paste it into **Resume & apply**. Noble Search never opens LinkedIn pages itself ("Fetch from posting" says to paste instead).
 - **Ratings:** a LinkedIn job is still rated, from its title and company only, and shows **⚠ Title-only rating — paste the description for a full rating**. Click that pill, paste the description in Resume & apply, and click **Rate with this description**: the description you pasted is saved with the job, and it's rated again in full.
 - **Also on an employer's site:** the card shows the employer's details as usual, plus the **Also listed on LinkedIn** link (only while LinkedIn is on).
