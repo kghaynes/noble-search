@@ -1170,11 +1170,15 @@ async function renderSearch(keep){
         <div class="fld full">Days<div class="row" style="gap:12px">${QDAYS.map(x=>`<label class="radio"><input type="checkbox" data-qday="${x}" ${days.has(x)?'checked':''}> ${x}</label>`).join('')}</div></div>
         <label class="fld">Time zone<input id="q_tz" value="${esc(c.timezone)}" placeholder="America/New_York"></label>
         <label class="fld">Only jobs posted in the last (days)<input id="q_age" type="number" min="1" max="60" value="${esc(c.max_age_days)}"></label>
+        <div class="fld full linkedin"><label class="radio"><input type="checkbox" data-act="q_linkedin" data-notice="${esc(d.linkedin_notice||'')}" ${c.jsearch_linkedin?'checked':''}> <b>Include LinkedIn postings</b> — title, company and a link only</label>
+          <span class="hint">${c.jsearch_linkedin
+            ? `On since ${esc(niceDay((c.jsearch_linkedin_ack||'').slice(0,10)))}. LinkedIn jobs show only their title, company and an <i>Also listed on LinkedIn</i> link; paste the description yourself in Resume &amp; apply.`
+            : 'Off. LinkedIn results are left out before anything is saved or shown. LinkedIn doesn’t permit showing its job details here, so turning this on shows only the title, company and a link.'}</span></div>
       </div></section>
     <section class="box info"><h2>Where the job-board search looks</h2>
       <div class="hint">JSearch reads <b>Google for Jobs</b> — Google's index of public job postings — so one search covers:</div>
       <ul class="srcs">
-        <li><b>LinkedIn</b></li><li><b>Indeed</b></li><li><b>Glassdoor</b></li><li><b>ZipRecruiter</b></li>
+        <li><b>LinkedIn</b> — only if you turn on <i>Include LinkedIn postings</i> under Schedule (title, company and link only)</li><li><b>Indeed</b></li><li><b>Glassdoor</b></li><li><b>ZipRecruiter</b></li>
         <li>Other public boards Google indexes, such as Monster, CareerBuilder, SimplyHired and Ladders</li>
         <li>Company career sites (Workday, Greenhouse, Lever and similar)</li></ul>
       <div class="hint">It does <b>not</b> include USAJOBS (searched separately with your USAJOBS key) or postings only visible after signing in. Each card shows the board a job came from, e.g. “JSearch (LinkedIn)”.${(d.jsearch_publishers||[]).length?` <b>Boards in your current results:</b> ${d.jsearch_publishers.slice(0,12).map(([n,k])=>`${esc(n)} (${k})`).join(', ')}.`:''}
@@ -1215,10 +1219,6 @@ async function renderSearch(keep){
         <label class="fld">Requests your plan allows per month<input id="q_jbudget" type="number" min="10" value="${esc(c.jsearch_budget||200)}"><span class="hint">The free plan allows 200. Searches take turns if there are more than fit.</span></label>
         <details class="howto full"><summary>Advanced: exact searches</summary>
           <label class="fld">Run exactly as typed, one per line ({home} = your home town). Used in addition to the jobs above and counted in the same limit.<textarea id="q_jq" rows="3" placeholder="director it in Orlando, FL">${esc(c.jsearch_queries||'')}</textarea></label></details>
-        <div class="fld full linkedin"><label class="radio"><input type="checkbox" data-act="q_linkedin" data-notice="${esc(d.linkedin_notice||'')}" ${c.jsearch_linkedin?'checked':''}> <b>Include LinkedIn postings</b> — title, company and a link only</label>
-          <span class="hint">${c.jsearch_linkedin
-            ? `On since ${esc(niceDay((c.jsearch_linkedin_ack||'').slice(0,10)))}. LinkedIn jobs show only their title, company and an <i>Also listed on LinkedIn</i> link; paste the description yourself in Resume &amp; apply.`
-            : 'Off. LinkedIn results are left out before anything is saved or shown. LinkedIn doesn’t permit showing its job details here, so turning this on shows only the title, company and a link.'}</span></div>
         <label class="fld full">Skip these re-posting sites (one per line)<textarea id="q_jskip" rows="4">${esc(c.jsearch_skip_sites)}</textarea>
           <span class="hint">Some sites copy jobs from elsewhere; their copies are often out of date and sometimes fake. Links to these sites are never used — a job is kept only if the employer's own link or a known board (LinkedIn, Indeed…) is available.</span></label>
       </div></section>
