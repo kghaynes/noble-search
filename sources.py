@@ -1262,7 +1262,10 @@ hijobs.co.com
 workopia.io
 jobilize.com
 jooble.org
-bebee.com"""
+bebee.com
+jobleads.com
+jobmesh.io
+trabajos.univision.com"""
 
 
 def _skip_list(cfg):

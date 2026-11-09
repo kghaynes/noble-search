@@ -4,6 +4,9 @@ All notable changes are listed here. Versions follow [semantic versioning](https
 
 ## [Unreleased]
 
+### Fixed
+- **Re-posting sites skipped:** jobleads.com, jobmesh.io and trabajos.univision.com are now on the default JSearch skip list. They pass JSearch only a ~500-character teaser and hide the full posting behind a JavaScript sign-up page, so fit ratings ran on almost nothing and "Fetch posting" failed with "loads its text with JavaScript". Existing installs keep their saved list: add these under **Search → Job-board searches (JSearch) → Skip these re-posting sites**.
+
 ### Changed
 - **LinkedIn postings are off by default, and title-and-link only when on.** LinkedIn doesn't permit showing its job details in apps like this. Job-board results published by LinkedIn are now dropped inside the search, before anything is saved or shown. **Include LinkedIn postings** (Search page → Schedule) turns them on after a confirmation explaining the limits; your confirmation and its time are recorded. When on, a LinkedIn job shows only its title, its company and an **Also listed on LinkedIn ↗** link. Paste the description yourself into Resume & apply to draft a resume, because Noble Search never opens LinkedIn pages. Jobs that are also on an employer's site keep the employer's details and gain the LinkedIn link. LinkedIn jobs are still rated from their title and company, flagged **⚠ Title-only rating — paste the description for a full rating**; **Rate with this description** in Resume & apply saves your pasted description and re-rates the job in full. On upgrade, jobs known only from LinkedIn are removed once (watchlist ones are reduced to title, company and link). See the README's *LinkedIn postings* section.
 
