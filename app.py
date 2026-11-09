@@ -493,8 +493,13 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError("unknown job")
             kind = data.get("kind") if data.get("kind") in ("resume", "application") else "resume"
             qs = [q.strip() for q in str(data.get("questions") or "").splitlines() if q.strip()][:25]
-            return {"ok": True, "id": drafts.create(key, kind, data.get("jd_text", ""), data.get("provider"),
-                                                     {"questions": qs} if qs else None)}
+            extra = {"questions": qs} if qs else {}
+            tpl = str(data.get("template") or "")
+            if tpl:
+                if tpl not in ps.resume_names():
+                    raise ValueError("That resume isn't in your Profile any more")
+                extra["template"] = tpl
+            return {"ok": True, "id": drafts.create(key, kind, data.get("jd_text", ""), data.get("provider"), extra or None)}
         if path == "/drafts/delete":
             drafts.delete(int(data.get("id") or 0))
             return {"ok": True}

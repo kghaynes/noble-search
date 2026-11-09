@@ -124,3 +124,21 @@ class CutOff(unittest.TestCase):
             llm._post = old
         self.assertEqual(cm.exception.limit, 123)
         self.assertEqual(cm.exception.text, '{"a": "x')
+
+
+class PerJobTemplate(unittest.TestCase):
+    def test_pick_overrides_default(self):
+        import profile_store as ps
+        old = ps.resume_names
+        ps.resume_names = lambda: ["exec.docx", "pm.docx"]
+        try:
+            prof = {"template_resume": "exec.docx"}
+            self.assertEqual(drafts._template_for({"extra_json": json.dumps({"template": "pm.docx"})}, prof), "pm.docx")
+            self.assertEqual(drafts._template_for({"extra_json": "{}"}, prof), "exec.docx")
+            # a pick that was since removed falls back to the default
+            self.assertEqual(drafts._template_for({"extra_json": json.dumps({"template": "gone.docx"})}, prof), "exec.docx")
+            self.assertEqual(drafts.public({"id": 1, "job_key": "k", "kind": "resume", "status": "done", "error": "",
+                                            "provider": "anthropic", "model": "m", "created": "", "finished": "",
+                                            "extra_json": json.dumps({"template": "pm.docx"})})["template"], "pm.docx")
+        finally:
+            ps.resume_names = old

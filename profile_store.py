@@ -192,8 +192,15 @@ def set_template(name):
     save_profile({"template_resume": os.path.basename(p)})
 
 
-def template_path():
-    name = get_profile().get("template_resume")
+def resume_names():
+    return [r["name"] for r in list_resumes()]
+
+
+def template_path(name=None):
+    """Path of the layout template: `name` if given and uploaded, else the resume tagged in the Profile."""
+    if name and name not in resume_names():
+        name = None
+    name = name or get_profile().get("template_resume")
     if not name:
         return None
     try:
