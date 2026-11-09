@@ -96,8 +96,13 @@ def rate_job(settings, provider, system, job):
         # a long reason can run past the reply limit and cut the JSON off: allow more room, and be blunter, on retries
         prompt = job_prompt(job) + ("" if attempt == 0 else
                                     "\n\nReply with ONLY the JSON object — no other text. Keep the reason under 45 words.")
-        raw, prov, model = llm.complete(settings, system, prompt, provider=provider, json_mode=True,
-                                        max_tokens=(600, 1000, 1000)[attempt], model=settings.get("anthropic_fit_model") or None)
+        try:
+            raw, prov, model = llm.complete(settings, system, prompt, provider=provider, json_mode=True,
+                                            max_tokens=(1000, 2000, 4000)[attempt],
+                                            model=settings.get("anthropic_fit_model") or None)
+        except llm.LLMCutOff as e:   # ran out of room (some models think first): retry with more
+            last = e
+            continue
         try:
             d = llm.parse_json(raw)
         except llm.LLMError as e:

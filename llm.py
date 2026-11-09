@@ -13,6 +13,14 @@ class LLMError(Exception):
     pass
 
 
+class LLMCutOff(LLMError):
+    """The model stopped because it hit the output limit, so the reply is incomplete."""
+
+    def __init__(self, msg, text="", limit=0):
+        super().__init__(msg)
+        self.text, self.limit = text, limit
+
+
 _NO_TEMPERATURE = set()  # Claude models that refuse a temperature setting
 _GPU = threading.Lock()  # one local-model call at a time (drafts and fit rating share the GPU)
 
@@ -75,6 +83,9 @@ def complete(settings, system, user, provider=None, json_mode=True, max_tokens=8
             else:
                 raise
         text = "".join(b.get("text", "") for b in resp.get("content", []) if b.get("type") == "text")
+        if resp.get("stop_reason") == "max_tokens":
+            # Some models also spend part of the limit thinking before they answer.
+            raise LLMCutOff(f"The reply was cut off at the {max_tokens:,}-token output limit", text, max_tokens)
         if not text:
             raise LLMError(f"Empty response from Claude (stop_reason={resp.get('stop_reason')})")
         return text, "anthropic", model
@@ -93,6 +104,8 @@ def complete(settings, system, user, provider=None, json_mode=True, max_tokens=8
     with _GPU:
         resp = _post(base + "/api/chat", payload)
     text = (resp.get("message") or {}).get("content", "")
+    if resp.get("done_reason") == "length":
+        raise LLMCutOff(f"The reply was cut off at the {max_tokens:,}-token output limit", text, max_tokens)
     if not text:
         raise LLMError("Empty response from Ollama")
     return text, "ollama", model
