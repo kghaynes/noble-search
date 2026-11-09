@@ -4,10 +4,16 @@ All notable changes are listed here. Versions follow [semantic versioning](https
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-11-09
+Know when postings come down — and which employers you need to apply to fast. Plus per-job resume choice and sturdier drafts.
+
 ### Added
 - **Closed postings and the ⚡ apply-fast signal.** Every search notices postings that were taken down. A job gone from the employer's own hiring system (Workday, Greenhouse, Lever, Ashby, SmartRecruiters, BambooHR, Eightfold, sitemaps) or from USAJOBS is marked closed right away. Watchlist jobs also get a posting-link check. **Posting closed?** on any card covers LinkedIn, Indeed and anything else the app can't check, and **↺ Reopen** undoes it. Closed jobs stay in their tab, dimmed, at the bottom, labeled with how long they were up and how early they closed. A starred or applied job that closes says *likely filled — follow up or move on* and is listed in the morning email under **Closed since the last search**. After 5 closures, employers whose postings usually come down within 10 days get **⚡ Usually closes in ~N days** on new jobs, on the card and on morning-email top picks. Safety rules keep failed or partial reads, first reads, settings changes, title-rule changes and older jobs from closing anything by mistake, and a closed job that reappears on its employer's site reopens as a repost. A small closure record outlives the 30-day cleanup. New **Closed postings** box on the Search page. See [docs/closed-postings.md](docs/closed-postings.md).
 - **Why a watchlist job is "Not for me".** Moving a starred or applied job to *Not for me* asks why: certifications, specific skills, salary, location, other, plus an optional note. It's optional and skippable, and Inbox triage never asks. Totals show in the Search page's *Closed postings* box.
 - **Pick the resume to follow, per job.** The Resume & apply pane now has a **Follow** menu next to the model choice: keep your default template (Profile → Resumes) or pick another uploaded resume for this one job — say, a program-manager resume for a non-executive role. The pick sets the draft's layout, section names and wording, and which resume the application text leads with. Each draft shows which resume it followed.
+
+### Upgrading
+- Closures start the day after the first search on this version: that first search only learns each source's listings. ⚡ chips appear once an employer has 5 closed postings. No settings to change.
 
 ### Fixed
 - **Drafts failing with "invalid JSON" when the reply was cut off.** A long resume could run past the reply limit (some models also use part of it to think first), and the half-finished reply looked like broken JSON. Drafts now get twice the room (16,000 tokens), a cut-off reply is detected and asked for again with 32,000, and the error says plainly when a reply was too long. Fit rating gets more room the same way.
@@ -96,7 +102,8 @@ First public release.
 - Morning email and ntfy push; Draft Library; 30-day retention with a permanent watchlist.
 - Getting-started checklist; ✨ Suggest towns and searches; Claude API by default with optional local Ollama.
 
-[Unreleased]: https://github.com/kghaynes/noble-search/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/kghaynes/noble-search/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/kghaynes/noble-search/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/kghaynes/noble-search/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/kghaynes/noble-search/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/kghaynes/noble-search/compare/v0.2.0...v0.2.1
