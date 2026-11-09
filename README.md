@@ -527,6 +527,8 @@ Full details: [docs/closed-postings.md](docs/closed-postings.md).
 - **To job sites, USAJOBS and JSearch:** only searches (job titles and your town), never your profile or resume.
 - **To your email provider:** the morning summary.
 
+Full details, including what is stored where and how to delete it, are in **[PRIVACY.md](PRIVACY.md)**.
+
 **Your personal details are hidden from the AI.** Before anything goes to the model, Noble Search:
 
 - **Swaps out your contact details.** Your name, street address, phone number, email and LinkedIn link are replaced with placeholders like `{{NAME}}` and `{{EMAIL}}`. When the reply comes back, the real values are put back in on your computer. The model doesn't need them to rate a job or rewrite your bullets, and your drafts still show your real details. Contact details of other people (say, a recruiter's email in a posting) get their own placeholders and are put back the same way. Your town and state are kept, because fit ratings need them to judge commute and relocation.
