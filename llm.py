@@ -5,6 +5,8 @@ import threading
 import urllib.error
 import urllib.request
 
+import privacy
+
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
 
@@ -57,8 +59,26 @@ def model_label(settings, provider=None):
 
 
 def complete(settings, system, user, provider=None, json_mode=True, max_tokens=8000, model=None):
-    """Return (text, provider, model). `model` overrides the Claude model (fit rating uses a cheaper one)."""
+    """Return (text, provider, model). `model` overrides the Claude model (fit rating uses a cheaper one).
+
+    With the `redact_pii` setting on (the default), personal details are swapped for placeholders before
+    the request leaves this computer and put back in the reply here. See privacy.py."""
     provider = provider or settings.get("provider", "anthropic")
+    red = None
+    if settings.get("redact_pii", True):
+        import profile_store   # imported here: profile_store has no reason to load at llm import time
+        system, user, red = privacy.prepare(profile_store.get_profile(), system, user)
+    try:
+        text, prov, used = _complete(settings, system, user, provider, json_mode, max_tokens, model)
+    except LLMCutOff as e:
+        if red:
+            e.text = red.restore(e.text, json_safe=json_mode)
+        raise
+    return (red.restore(text, json_safe=json_mode) if red else text), prov, used
+
+
+def _complete(settings, system, user, provider, json_mode, max_tokens, model):
+    # Messages API only. Resume content never goes through the Batch or Files APIs (see README → Privacy).
     temp = float(settings.get("temperature", 0.3))
     if provider == "anthropic":
         key = settings.get("anthropic_api_key") or ""

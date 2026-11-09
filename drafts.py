@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 import apply
 import applog
 import llm
+import privacy
 import profile_store as ps
 import resume
 
@@ -175,6 +176,8 @@ def _sources():
             texts.append((r["name"], resume.extract_docx_text(os.path.join(ps.RESUME_DIR, r["name"]))))
         except Exception:  # noqa: BLE001 — skip unreadable files
             continue
+    if ps.get_settings().get("redact_pii", True):
+        inv, texts = privacy.scrub_candidate(inv, texts)   # no polygraph / investigation details to the model
     return inv, texts
 
 

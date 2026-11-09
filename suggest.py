@@ -7,6 +7,7 @@ the user clicks Save, so they can review and edit first.
 import re
 
 import llm
+import privacy
 import profile_store as ps
 import sources
 
@@ -77,6 +78,11 @@ RESUME_MAX = 12000
 
 
 def _career_text():
+    text = _career_text_raw()
+    return privacy.scrub_clearance_details(text) if ps.get_settings().get("redact_pii", True) else text
+
+
+def _career_text_raw():
     """The person's career for suggestions: the full career inventory, or — if there is none yet —
     the text of their uploaded resumes (template resume first)."""
     inv = ps.get_inventory().strip()

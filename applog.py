@@ -72,8 +72,9 @@ def save_bad_reply(name, text):
     try:
         os.makedirs(LOG_DIR, exist_ok=True)
         path = os.path.join(LOG_DIR, f"bad-reply-{re.sub(r'[^a-z0-9-]', '', name.lower())[:40]}.txt")
+        import privacy   # personal details out of troubleshooting files too
         with open(path, "w", encoding="utf-8") as f:
-            f.write(text or "")
+            f.write(privacy.clean_for_log(text or "", ps.get_profile()))
         return os.path.basename(path)
     except OSError:
         return ""

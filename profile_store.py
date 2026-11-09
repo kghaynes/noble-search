@@ -61,6 +61,9 @@ SETTINGS_DEFAULTS = {
     "anthropic_fit_model": "claude-haiku-4-5-20251001",
     "anthropic_api_key": "",
     "temperature": 0.3,
+    # swap name, street address, phone, email and LinkedIn for placeholders before anything goes to the
+    # model, and cut clearance details to level + status (privacy.py). On by default.
+    "redact_pii": True,
 }
 
 
@@ -240,6 +243,8 @@ def save_settings(data):
                     v = max(4096, min(131072, int(v)))
                 except (TypeError, ValueError):
                     v = SETTINGS_DEFAULTS[k]
+            elif k == "redact_pii":
+                v = v if isinstance(v, bool) else str(v).strip().lower() not in ("false", "0", "off", "no", "")
             elif k == "temperature":
                 try:
                     v = max(0.0, min(1.0, float(v)))
