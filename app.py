@@ -498,6 +498,14 @@ class Handler(BaseHTTPRequestHandler):
             return {"ok": True, "config": search.save_config(data)}
         if path == "/jobs/rate":
             key = str(data.get("job_key") or "")
+            jd = str(data.get("jd_text") or "").strip()
+            if key and jd:   # a description you pasted (e.g. from LinkedIn) — saved with the job for a full rating
+                if len(jd) < 200:
+                    raise ValueError("Paste the full job description first")
+                with _db_lock, db() as conn:
+                    cur = conn.execute("UPDATE jobs SET description=?, updated_at=? WHERE job_key=?", (jd[:30000], now_iso(), key))
+                    if cur.rowcount == 0:
+                        raise ValueError("unknown job")
             try:
                 if key:
                     fit.run_async([key], data.get("provider"), force=True)

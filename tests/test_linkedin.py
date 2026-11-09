@@ -144,5 +144,25 @@ class Display(Base):
         self.assertIn("paste it here", reason)
 
 
+class RateWithDescription(Base):
+    def test_pasted_description_saved_and_rerated(self):
+        with app.db() as c:
+            c.execute("INSERT INTO jobs (job_key, company, title, sources, linkedin_link, fit, first_seen, last_seen) "
+                      "VALUES ('acme|director it','Acme','Director IT','JSearch (LinkedIn)','https://www.linkedin.com/jobs/view/1','Med',date('now'),date('now'))")
+        search.set_linkedin(True, confirmed=True)
+        self.assertFalse(next(j for j in app.list_jobs() if j["job_key"] == "acme|director it")["has_description"])  # → warning pill
+        import fit
+        calls, old = [], fit.run_async
+        fit.run_async = lambda keys=None, provider=None, force=False: calls.append((keys, force))
+        try:
+            with self.assertRaises(ValueError):
+                app.Handler._post_extra(None, "/jobs/rate", {"job_key": "acme|director it", "jd_text": "too short"})
+            app.Handler._post_extra(None, "/jobs/rate", {"job_key": "acme|director it", "jd_text": "Lead IT. " * 40})
+        finally:
+            fit.run_async = old
+        self.assertEqual(calls, [(["acme|director it"], True)])
+        self.assertTrue(next(j for j in app.list_jobs() if j["job_key"] == "acme|director it")["has_description"])
+
+
 if __name__ == "__main__":
     unittest.main()

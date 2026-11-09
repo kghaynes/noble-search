@@ -50,6 +50,7 @@ main{padding:14px 0 60px}
 .pill.closedp{color:var(--new);background:transparent;border:1px solid var(--new)}
 .pill.fast{color:#9a3d06;background:#fff1e0}
 @media (prefers-color-scheme: dark){ .pill.fast{color:#ffcf9e;background:#3a2412} }
+.pillbtn{border:none;cursor:pointer;font:inherit;font-size:12px;font-weight:650}
 .lilink{color:var(--accent);font-weight:600;text-decoration:none}
 .alertline{font-size:13px;font-weight:650;color:var(--new)}
 .closebtn{grid-column:1 / -1;border:none;background:transparent;color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline;text-align:left;padding:2px 0}
@@ -420,6 +421,7 @@ function liCard(j, st, li, closed, closedLbl, filled, passing){
     <div class="main">
     <div class="head">
       ${j.fit?`<span class="pill fit-${esc(j.fit)}">${esc(j.fit)} fit</span>`:''}
+      ${!j.has_description?`<button class="pill warn pillbtn" data-draft="${esc(j.job_key)}" title="This rating is from the title and company only. Open Resume &amp; apply, paste the job description from LinkedIn, and click Rate with this description.">&#9888; Title-only rating — paste the description for a full rating</button>`:''}
       ${!j.viewed?'<span class="pill newb">NEW</span>':''}
       ${closed?`<span class="pill closedp">${closedLbl}</span>`:''}
       <span class="title">${esc(j.title)}</span>
@@ -427,7 +429,8 @@ function liCard(j, st, li, closed, closedLbl, filled, passing){
     <div class="sub"><b>${esc(j.company)}</b></div>
     <div class="meta">${li}</div>
     ${filled?`<div class="alertline">${filled}</div>`:''}
-    <div class="hint">LinkedIn doesn’t permit showing this job’s details here. Open it on LinkedIn, and to draft a resume, paste its description into <b>Resume &amp; apply</b>.</div>
+    ${j.has_description && j.fit_reason ? `<div class="why">${esc(j.fit_reason)}</div>` : ''}
+    <div class="hint">LinkedIn doesn’t permit showing this job’s details here. Open it on LinkedIn, and to draft a resume${j.has_description?'':' or get a full rating'}, paste its description into <b>Resume &amp; apply</b>.</div>
     </div>
     <div class="actions">${passing ? passHTML(j) : st + `<button class="draftbtn ${S.open.has(j.job_key)?'on':''}" data-draft="${esc(j.job_key)}">✎ Resume &amp; apply${S.counts[j.job_key]?` · ${S.counts[j.job_key]}`:''}</button>`
       + (closed ? `<button class="closebtn" data-act="j_reopen" data-k="${esc(j.job_key)}">↺ Reopen — it's still up</button>`
@@ -560,6 +563,7 @@ function panelHTML(key){
     <div>
       <div class="row" style="margin-bottom:6px"><span class="hint">Job description (makes the draft much sharper):</span>
         <button class="btn sm" data-act="fetchjd" data-k="${esc(key)}">Fetch from posting</button>
+        ${(S.jobs.find(x=>x.job_key===key)||{}).linkedin_only ? `<button class="btn sm" data-act="rate_jd" data-k="${esc(key)}" title="Saves the description you pasted with this job and rates it again — a full rating instead of title-only.">Rate with this description</button>` : ''}
         ${msg?`<span class="hint ${msg.ok?'':'err'}">${esc(msg.text)}</span>`:''}</div>
       <textarea class="jd" data-jd="${esc(key)}" placeholder="Paste the job description here (or click Fetch from posting).">${esc(S.jd[key]||'')}</textarea>
     </div>
@@ -696,6 +700,13 @@ async function onAct(t){
     if(a==='rate'){
       await api('/jobs/rate', {job_key:key}); toast('Rating… takes about a minute on the local model');
       S.fitState = {running:true, done:0, total:1}; setTimeout(load, 20000); return;
+    }
+    if(a==='rate_jd'){
+      const jd = (S.jd[key]||'').trim();
+      if(jd.length < 200){ toast('Paste the job description from LinkedIn first'); return; }
+      await api('/jobs/rate', {job_key:key, jd_text: jd});
+      const j = S.jobs.find(x=>x.job_key===key); if(j) j.has_description = true;
+      toast('Rating with the description…'); S.fitState = {running:true, done:0, total:1}; setTimeout(load, 15000); render(); return;
     }
     if(a==='fetchjd'){
       t.disabled = true; S.jdMsg[key] = {ok:true, text:'Fetching…'}; refreshPanel(key);
