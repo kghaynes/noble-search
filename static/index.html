@@ -46,6 +46,15 @@ main{padding:14px 0 60px}
 .empty{color:var(--muted);text-align:center;padding:48px 0}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px;box-shadow:var(--shadow);display:grid;grid-template-columns:1fr auto;gap:6px 16px}
 .card.dim{opacity:.6}
+.card.closed .main,.card.closed .notes{opacity:.55}
+.pill.closedp{color:var(--new);background:transparent;border:1px solid var(--new)}
+.pill.fast{color:#9a3d06;background:#fff1e0}
+@media (prefers-color-scheme: dark){ .pill.fast{color:#ffcf9e;background:#3a2412} }
+.alertline{font-size:13px;font-weight:650;color:var(--new)}
+.closebtn{grid-column:1 / -1;border:none;background:transparent;color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline;text-align:left;padding:2px 0}
+.passbox{grid-column:1 / -1;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--accent-soft)}
+.passbox label{display:inline-flex;align-items:center;gap:5px;margin:3px 12px 3px 0;font-size:13px}
+.passbox input[type=text]{width:100%;margin-top:6px}
 .card .head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
 .title{font-size:16px;font-weight:650;text-decoration:none;color:var(--ink)}
 .title:hover{color:var(--accent);text-decoration:underline}
@@ -276,11 +285,11 @@ function filtered(){
   let a = S.jobs.filter(tabFn).filter(j => passFilters(j, f));
   const s = $('#sort').value;
   const pd = j => j.posted_date || '0000';
-  a.sort((x,y)=>
+  a.sort((x,y)=> (!!x.closed_on - !!y.closed_on) || (   // closed postings sink to the bottom of the tab
     s==='fit' ? (FITRANK[x.fit]??3)-(FITRANK[y.fit]??3) || pd(y).localeCompare(pd(x)) :
     s==='closing' ? (x.closing_date||'9999').localeCompare(y.closing_date||'9999') :
     s==='company' ? x.company.localeCompare(y.company) :
-    pd(y).localeCompare(pd(x)) || (FITRANK[x.fit]??3)-(FITRANK[y.fit]??3));
+    pd(y).localeCompare(pd(x)) || (FITRANK[x.fit]??3)-(FITRANK[y.fit]??3)));
   return a;
 }
 function clearFilters(){
@@ -351,12 +360,18 @@ function setupHTML(){
 function card(j){
   const posted = j.posted_date ? `Posted ${esc(j.posted_date)} (${daysAgo(j.posted_date)})` : 'Posted date unverified';
   const st = STATUS_BTNS.map(([s,l]) => `<button class="st ${j.status===s?'on':''}" data-s="${s}" data-k="${esc(j.job_key)}">${l}</button>`).join('');
-  return `<article class="card ${j.status==='dismissed'?'dim':''}" data-k="${esc(j.job_key)}">
+  const closed = !!j.closed_on;
+  const closedLbl = closed ? `Closed ${esc(niceDay(j.closed_on))}${j.days_up!=null?` · was up ${j.days_up} day${j.days_up===1?'':'s'}`:''}${j.early_days?` · ${j.early_days} days before its deadline`:''}` : '';
+  const filled = closed && j.watch ? (['applied','interviewing','offer'].includes(j.status) ? 'Posting closed — likely filled. Follow up or move on.' : 'Closed before you applied.') : '';
+  const passing = S.passing===j.job_key;
+  return `<article class="card ${j.status==='dismissed'?'dim':''} ${closed?'closed':''}" data-k="${esc(j.job_key)}">
     <div class="main">
     <div class="head">
       ${j.fit?`<span class="pill fit-${esc(j.fit)}">${esc(j.fit)} fit</span>`:`<span class="pill unrated">${S.fitState&&S.fitState.running?'Rating soon…':'Not rated'}</span>`}
       ${!j.viewed?'<span class="pill newb">NEW</span>':''}
-      ${j.open_status && j.open_status!=='Open'?`<span class="pill warn">${esc(j.open_status)}</span>`:''}
+      ${closed?`<span class="pill closedp" title="${esc(j.closed_how||'')}">${closedLbl}</span>`:''}
+      ${!closed && j.fast_days!=null?`<span class="pill fast" title="${esc(j.company)}'s postings have stayed up a median of ${j.fast_days} days. Apply soon.">⚡ Usually closes in ~${j.fast_days} days</span>`:''}
+      ${j.open_status && !['Open','Closed'].includes(j.open_status)?`<span class="pill warn">${esc(j.open_status)}</span>`:''}
       ${j.watch && !j.active?'<span class="pill warn">Over 30 days</span>':''}
       <a class="title" href="${esc(j.link)}" target="_blank" rel="noopener" data-open="${esc(j.job_key)}">${esc(j.title)}</a>
     </div>
@@ -369,13 +384,39 @@ function card(j){
       ${j.sources?`<span>via ${esc(j.sources)}</span>`:''}
       ${!j.watch && j.expires && (j.status==='dismissed' || S.counts[j.job_key]) ? `<span class="${S.counts[j.job_key]?'close':''}">${S.counts[j.job_key]?'Job and drafts removed':'Removed'} ${esc(niceDay(j.expires))}${S.counts[j.job_key]?' — ★ to keep':''}</span>`:''}
     </div>
+    ${filled?`<div class="alertline">${filled}</div>`:''}
     ${j.fit_reason?`<div class="why">${esc(j.fit_reason)}${j.lane?` <span class="hint">· ${esc(j.lane)}</span>`:''}</div>`:''}
     <div class="ratedby">${j.fit_by?`Fit by ${esc(j.fit_by)} · `:''}<button class="linkbtn" data-act="rate" data-k="${esc(j.job_key)}">${j.fit?'Re-rate':'Rate now'}</button></div>
     </div>
-    <div class="actions">${st}<button class="draftbtn ${S.open.has(j.job_key)?'on':''}" data-draft="${esc(j.job_key)}">✎ Resume &amp; apply${S.counts[j.job_key]?` · ${S.counts[j.job_key]}`:''}</button></div>
+    <div class="actions">${passing ? passHTML(j) : st + `<button class="draftbtn ${S.open.has(j.job_key)?'on':''}" data-draft="${esc(j.job_key)}">✎ Resume &amp; apply${S.counts[j.job_key]?` · ${S.counts[j.job_key]}`:''}</button>`
+      + (closed ? `<button class="closebtn" data-act="j_reopen" data-k="${esc(j.job_key)}" title="${esc(j.closed_how||'')}. Reopen if it's still up.">↺ Reopen — it's still up</button>`
+                : `<button class="closebtn" data-act="j_close" data-k="${esc(j.job_key)}" title="Use this when the posting is gone (for example on LinkedIn or Indeed, which the app can't check).">Posting closed?</button>`)}</div>
     <div class="notes"><textarea data-notes="${esc(j.job_key)}" placeholder="Notes — recruiter, contact, next step…">${esc(j.notes)}</textarea><div class="saved" id="sv-${esc(j.job_key)}"></div></div>
     ${S.open.has(j.job_key) ? `<div class="dpanel" id="dp-${esc(j.job_key)}">${panelHTML(j.job_key)}</div>` : ''}
   </article>`;
+}
+function closuresHTML(c){
+  if(!c) return '';
+  const by = c.by || {}, total = Object.values(by).reduce((a,b)=>a+b, 0);
+  const how = [['employer',"employer hiring sites"],['usajobs','USAJOBS'],['link','dead posting links'],['you','marked by you']]
+    .filter(([k])=>by[k]).map(([k,l])=>`${by[k]} from ${l}`).join(' · ');
+  const emp = (c.employers||[]).map(([co,n,m]) => `<tr><td>${esc(co)}${m<=c.fast_days?' <span class="pill fast">⚡ fast</span>':''}</td><td>${m} day${m===1?'':'s'} <span class="hint">· ${n} closed</span></td></tr>`).join('');
+  const rs = Object.entries(c.reasons||{}).sort((a,b)=>b[1]-a[1]).map(([k,n]) => `${esc((PASS_REASONS.find(x=>x[0]===k)||[k,k])[1])} ${n}`).join(' · ');
+  return `<section class="box"><h2>Closed postings</h2>
+    <div class="hint">Every search notices postings that were taken down: gone from the employer's own hiring site or from USAJOBS (closed right away), or a watchlist posting whose link no longer works. Job boards like LinkedIn and Indeed can't be checked — use <b>Posting closed?</b> on the job. Closed jobs stay in your list, dimmed. Once an employer has ${c.min_closures}+ closed postings, jobs from employers that usually close within ${c.fast_days} days get a ⚡ chip here and in the morning email.</div>
+    <p>${total ? `<b>${total}</b> closed so far — ${how}${c.reposts?` · ${c.reposts} reopened (reposted)`:''}.` : 'Nothing closed yet. The first search after an upgrade only learns each source; closures start with the next one.'}</p>
+    ${emp ? `<table class="qt"><tr><th>Employer</th><th>Postings stay up (median)</th></tr>${emp}</table>` : total ? `<div class="hint">Employer speeds appear once an employer has ${c.min_closures} closed postings.</div>` : ''}
+    ${rs ? `<p class="hint" style="margin-top:8px">Why watchlist jobs became “Not for me”: ${rs}.</p>` : ''}
+  </section>`;
+}
+const PASS_REASONS = [['certifications','Certifications'],['skills','Specific skills'],['salary','Salary'],['location','Location'],['other','Other']];
+function passHTML(j){
+  return `<div class="passbox"><b>Why not for you?</b> <span class="hint">Optional — helps spot patterns.</span><div>
+    ${PASS_REASONS.map(([k,l]) => `<label><input type="checkbox" data-pr="${k}"> ${l}</label>`).join('')}</div>
+    <input type="text" class="inp" id="pnote-${esc(j.job_key)}" maxlength="300" placeholder="Anything else? (optional)">
+    <div class="row" style="margin-top:8px;gap:8px"><button class="btn primary sm" data-act="pass_save" data-k="${esc(j.job_key)}">Save &amp; move to Not for me</button>
+    <button class="btn sm" data-act="pass_skip" data-k="${esc(j.job_key)}">Skip</button>
+    <button class="linkbtn" data-act="pass_cancel" data-k="${esc(j.job_key)}">Cancel</button></div></div>`;
 }
 async function update(key, body){
   const r = await fetch('/jobs/update', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({job_key:key, ...body})});
@@ -389,6 +430,7 @@ document.addEventListener('click', async e => {
   if(t.classList.contains('st')){
     const key = t.dataset.k, j = S.jobs.find(x=>x.job_key===key);
     const next = j.status===t.dataset.s ? '' : t.dataset.s;
+    if(next==='dismissed' && j.watch){ S.passing = key; render(); return; }   // ask why (watchlist only, never Inbox triage)
     await update(key, {status: next, viewed: 1}); render(); return;
   }
   if(t.dataset.open){ update(t.dataset.open, {viewed:1}).then(render); return; }
@@ -591,6 +633,19 @@ function verHTML(key, d){
 async function onAct(t){
   const a = t.dataset.act, key = t.dataset.k, id = +t.dataset.id;
   try{
+    if(a==='j_close' || a==='j_reopen'){
+      const r = await fetch('/jobs/close', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({job_key:key, closed: a==='j_close'})});
+      if(!r.ok) throw new Error('save failed');
+      toast(a==='j_close' ? 'Marked closed' : 'Reopened'); await load(); return;
+    }
+    if(a==='pass_cancel'){ S.passing = null; render(); return; }
+    if(a==='pass_save' || a==='pass_skip'){
+      const box = t.closest('.passbox');
+      const reasons = a==='pass_save' ? [...box.querySelectorAll('[data-pr]:checked')].map(x=>x.dataset.pr) : [];
+      const note = a==='pass_save' ? (box.querySelector('input[type=text]').value||'').trim() : '';
+      await update(key, {status:'dismissed', viewed:1, reasons, reason_note: note});
+      S.passing = null; render(); toast('Moved to Not for me'); return;
+    }
     if(a==='p_fiton'){
       t.disabled = true;
       const prov = (S.settings && S.settings.provider === 'ollama') ? 'ollama' : 'anthropic';
@@ -1064,6 +1119,7 @@ async function renderSearch(keep){
       <div class="row"><button class="btn primary" data-act="q_why">Check this job</button>${S.whyHTML?'<button class="linkbtn" data-act="q_whyclear">Clear</button>':''}</div>
       <div id="w_out">${S.whyHTML||''}</div>
     </section>
+    ${closuresHTML(d.closures)}
     <section class="box"><h2>Schedule</h2>
       <div class="grid2">
         <label class="radio"><input type="checkbox" id="q_enabled" ${c.enabled?'checked':''}> Run automatically</label>

@@ -51,6 +51,7 @@ Everything is kept on your computer. You bring your own AI key, which costs a fe
 - [Getting your keys](#getting-your-keys)
 - [Using it day to day](#using-it-day-to-day)
 - [How the search works](#how-the-search-works)
+- [Closed postings and the ⚡ apply-fast signal](#closed-postings-and-the--apply-fast-signal)
 - [How long things are kept](#how-long-things-are-kept)
 - [Privacy and security](#privacy-and-security)
 - [Opening it from your phone or another computer](#opening-it-from-your-phone-or-another-computer)
@@ -397,6 +398,10 @@ The alert arrives with the morning email.
       - Answers marked **[confirm]** need facts that aren't in your Profile. Check them yourself.
    4. **Check the keyword chips.** "Add — you have these" are posting terms your Profile supports but your draft doesn't use yet.
 4. **Track.** Move the job through Applied → Interviewing → Offer.
+   - A **⚡ Usually closes in ~N days** chip means that employer takes postings down fast. Apply soon.
+   - A dimmed card labeled **Closed** means the posting was taken down. If you'd applied, it says **likely filled — follow up or move on**. If it's still up, click **↺ Reopen**.
+   - Found a posting gone on LinkedIn or Indeed? Click **Posting closed?** on its card.
+   - Moving a **watchlist** job to **Not for me** asks why (certifications, specific skills, salary, location, other). It's optional, and dismissing from the Inbox never asks.
 5. **Export.** **Export CSV** gives you a spreadsheet of everything.
 
 To rate a job again, for example after improving your inventory, click **Re-rate** on its card.
@@ -444,6 +449,45 @@ If something is set up in a way that stops this working — for example rating i
 
 ---
 
+## Closed postings and the ⚡ apply-fast signal
+
+Many postings come down within days, long before the closing date they list. Noble Search notices, and turns that into a reason to apply fast.
+
+**How a posting is marked closed**
+
+| Where it was found | What happens | Marked by |
+|---|---|---|
+| The employer's own hiring system (Workday, Greenhouse, Lever, Ashby, SmartRecruiters, BambooHR, Eightfold, sitemap) | It's gone from the employer's list in a search that worked → **closed right away** | *Taken down from the employer's hiring site* |
+| USAJOBS | It dropped out of USAJOBS (which only lists open announcements) → closed; if that's before its closing date, the card says how many days early | *Removed from USAJOBS* |
+| A job on your watchlist | Its posting link now answers "not found" → closed | *The posting link no longer works* |
+| Anywhere, including LinkedIn and Indeed | You click **Posting closed?** | *You marked it closed* |
+
+Job boards (JSearch: LinkedIn, Indeed, Glassdoor, …) never close a job on their own. The searches take turns and return only the top results, so "not in today's results" proves nothing. LinkedIn and Indeed also block automated checks, and Noble Search doesn't try to get around that.
+
+**What you see**
+
+- **Dimmed card:** a closed job stays in its tab, dimmed, at the bottom, with a label like *Closed Nov 7 · was up 4 days · 12 days before its deadline*. Hover the label to see how it was detected.
+- **Watchlist alert:** if you'd starred or applied to it, the card says *Closed before you applied* or *Posting closed — likely filled. Follow up or move on.* The morning email lists these under **Closed since the last search**.
+- **⚡ chip:** once an employer has at least 5 closed postings, Noble Search knows how long its postings usually stay up (the median). If that's 10 days or less, its new jobs get **⚡ Usually closes in ~N days**, on the card and on morning-email top picks.
+- **Search page → Closed postings:** totals by how they were detected, reposts, how fast each employer closes, and why watchlist jobs became *Not for me*.
+
+**Safety rules (so a bad day never closes good jobs)**
+
+- **Reads that failed:** nothing is closed from a source whose read failed, was stopped or was turned off.
+- **First read:** the first read of a source only learns its listings, and so does the first read after its settings change (its link, or for USAJOBS the nationwide choice, agencies, grade or home town). Closures start the next day.
+- **Short reads:** a read that returns under half the listings it usually does closes nothing.
+- **Title rules:** a job still listed under the same title stays open, even if you changed your title rules and it no longer counts as a match.
+- **Older jobs:** jobs older than the window a reader scans are only closed by the link check (the watchlist ones).
+- **Reposts:** a closed job that shows up again on the employer's site or USAJOBS **reopens on its own**, counted as a repost. If *you* closed it, a job board still showing it won't reopen it, but the employer's site will.
+
+**What's kept**
+
+A small record of each closure: company, title, source, fit, lane, posted, closed and closing dates, how it was detected, and your status at the time. It's kept after the job itself is cleaned up, so the per-employer speeds keep learning. *Not for me* reasons are kept the same way, with your optional note. No notes, drafts or job descriptions are kept in either record.
+
+Full details: [docs/closed-postings.md](docs/closed-postings.md).
+
+---
+
 ## How long things are kept
 
 - **Watchlist jobs** (Interested, Applied, Interviewing, Offer) are **kept until you change their status**.
@@ -452,6 +496,7 @@ If something is set up in a way that stops this working — for example rating i
   - The job is not added back later.
 - Each card and the Draft Library show the date a job will be removed. To keep a draft, star the job or download the draft.
 - To change the 30 days, set `MAX_AGE_DAYS` in `.env`.
+- **Closed jobs** follow the same rules. The small closure record (and *Not for me* reasons) is kept after the job is removed; see [Closed postings](#closed-postings-and-the--apply-fast-signal).
 
 ---
 
@@ -615,6 +660,7 @@ python3 -m unittest discover -s tests
 | `fit.py` | Fit rating: High/Med/Low, lane, reason and gaps |
 | `insight.py` | Settings check, "Why didn't I see a job?", and the job-board search report |
 | `suggest.py` | ✨ Suggest towns, job-board searches and job titles (from your career and military background) |
+| `closures.py` | Closed postings: detection after each source read, the watchlist link check, per-employer speed (⚡), *Not for me* reasons |
 | `notify.py` | Morning email and ntfy push |
 | `llm.py` | Talks to the Claude API or Ollama |
 | `profile_store.py` | Profile, resumes, career inventory, settings |

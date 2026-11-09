@@ -25,6 +25,7 @@ import llm
 import profile_store as ps
 import resume
 import applog
+import closures
 import discover
 import insight
 import search
@@ -137,7 +138,15 @@ def list_jobs():
         ctx = sources.Context(search.get_config(), ps.get_profile())
     except Exception:  # noqa: BLE001
         ctx = None
+    speed = closures.employer_speed()
     for r in rows:
+        if r.get("closed_on"):   # "Closed Nov 7 · was up 4 days · 12 days before its deadline"
+            closed = datetime.fromisoformat(r["closed_on"][:10]).date()
+            r["days_up"], r["early_days"] = closures.days_up(r, closed), closures.early_days(r, closed)
+            r["closed_how"] = closures.DETECTED_BY.get(r.get("closed_by") or "", "")
+            r["fast_days"] = None
+        else:
+            r["fast_days"] = closures.fast_days(r.get("company"), speed)
         mode = f"{r.get('work_mode') or ''} {r.get('location') or ''}".lower()
         r["near_home"] = bool(ctx) and "remote" not in mode and "relocation required" not in mode and \
             ctx.where(r.get("location") or "", loose_remote=False) == "local"
@@ -167,16 +176,22 @@ def update_job(key, data):
     sets.append("updated_at=?")
     args.append(now_iso())
     with _db_lock, db() as conn:
+        before = conn.execute("SELECT * FROM jobs WHERE job_key=?", (key,)).fetchone()
         cur = conn.execute(f"UPDATE jobs SET {', '.join(sets)} WHERE job_key=?", args + [key])
         if cur.rowcount == 0:
             raise KeyError(key)
+    # Watchlist job → "Not for me": keep why (certifications, skills, salary, location, other).
+    # Dismissing from the Inbox is never asked about, so nothing is recorded for it.
+    if before and "reasons" in data and str(data.get("status") or "").lower() == "dismissed" \
+            and before["status"] in WATCH_STATUSES:
+        closures.record_pass(dict(before), data.get("reasons") or [], data.get("reason_note") or "")
 
 
 def export_csv():
     rows = list_jobs()
     buf = io.StringIO()
     fields = ["status", "notes", "posted_date", "closing_date", "title", "company", "location",
-              "work_mode", "salary", "clearance", "fit", "fit_reason", "link", "first_seen"]
+              "work_mode", "salary", "clearance", "fit", "fit_reason", "link", "first_seen", "closed_on", "closed_by"]
     w = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
     w.writeheader()
     for r in rows:
@@ -410,7 +425,7 @@ class Handler(BaseHTTPRequestHandler):
                                     "fit": fit.status(), "unrated": len(fit.pending_keys()),
                                     "jsearch_monthly": search.jsearch_monthly_estimate(cfg),
                                     "jsearch_publishers": jsearch_publishers(),
-                                    "notify": search.notify.status(),
+                                    "notify": search.notify.status(), "closures": closures.summary(),
                                     "readers": sources.READER_LABELS, "progress": progress(),
                                     "title_presets": {k: {"label": l, "include": v} for k, (l, v) in sources.TITLE_PRESETS.items()}})
         if path == "/health":
@@ -530,6 +545,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": False, "detail": str(e)})
         if res is not None:
             return self._json(200, res)
+        if path == "/jobs/close":
+            try:
+                closures.set_closed(str(data.get("job_key", "")), bool(data.get("closed", True)))
+            except KeyError:
+                return self._json(404, {"error": "unknown job"})
+            return self._json(200, {"ok": True})
         if path == "/jobs/mark-all-viewed":
             with _db_lock, db() as conn:
                 conn.execute("UPDATE jobs SET viewed=1")
@@ -541,6 +562,7 @@ def main():
     init_db()
     drafts.init()
     search.init(db, _db_lock)
+    closures.init(db, _db_lock)
     insight.init(db, _db_lock)
     search.notify.init(db, _db_lock)
     fit.init(db, _db_lock)
