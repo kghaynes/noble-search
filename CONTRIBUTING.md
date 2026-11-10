@@ -25,6 +25,12 @@ Thanks for helping. Noble Search exists to make the military-to-civilian job sea
    ```
 4. Open a pull request that says what changed and why. If you changed a page, add a screenshot.
 
+## Releases (maintainer)
+
+1. Move the `[Unreleased]` notes in `CHANGELOG.md` under the new version and date, and add the compare link.
+2. Set the same version in `version.py`. The app shows it in the footer and in Settings → About, and the update check compares it with the latest GitHub release.
+3. Merge, then create the GitHub release with the tag `vX.Y.Z` on that commit, using the changelog section as its notes.
+
 ## License of contributions (please read)
 
 Noble Search is released under the **PolyForm Noncommercial License 1.0.0**. Its copyright holders (Kenneth Haynes and CyberCloudAI) also offer separate commercial licenses. To keep that possible:

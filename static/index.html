@@ -50,6 +50,16 @@ main{padding:14px 0 60px}
 .pill.closedp{color:var(--new);background:transparent;border:1px solid var(--new)}
 .pill.fast{color:#9a3d06;background:#fff1e0}
 @media (prefers-color-scheme: dark){ .pill.fast{color:#ffcf9e;background:#3a2412} }
+#updbar{margin-top:10px}
+#about{scroll-margin-top:120px}
+.updbar{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;border:1px solid var(--accent);background:var(--accent-soft);border-radius:10px;padding:8px 12px;font-size:14px}
+.updbar a{color:var(--accent);font-weight:650}
+.legal .linkbtn{font-size:11.5px}
+.about dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:8px 0}
+.about dt{color:var(--muted)}
+.about dd{margin:0}
+.about a{color:var(--accent)}
+@media (max-width:640px){ .about dl{grid-template-columns:1fr} .about dt{margin-top:6px} }
 .pillbtn{border:none;cursor:pointer;font:inherit;font-size:12px;font-weight:650}
 .lilink{color:var(--accent);font-weight:600;text-decoration:none}
 .alertline{font-size:13px;font-weight:650;color:var(--new)}
@@ -218,11 +228,12 @@ body{padding-bottom:56px}
     </div>
   </div>
 </header>
+<div class="wrap" id="updbar" hidden></div>
 <main class="wrap" id="list"></main>
 <div class="wrap" id="setupbar" hidden></div>
 <main class="wrap" id="view" hidden></main>
 <div class="toast" id="toast"></div>
-<footer class="legal">Noble Search &copy; 2026 Kenneth Haynes and <a href="https://cybercloudai.tech" target="_blank" rel="noopener">CyberCloudAI.tech</a>. Licensed under the <a href="https://polyformproject.org/licenses/noncommercial/1.0.0/" target="_blank" rel="noopener">PolyForm Noncommercial License 1.0.0</a>. Commercial use or reuse is prohibited without written permission.</footer>
+<footer class="legal"><button class="linkbtn" data-act="about_open" title="About Noble Search, updates, support and policies">Noble Search <span id="ver"></span> · About</button> · &copy; 2026 Kenneth Haynes and <a href="https://cybercloudai.tech" target="_blank" rel="noopener">CyberCloudAI.tech</a>. Licensed under the <a href="https://polyformproject.org/licenses/noncommercial/1.0.0/" target="_blank" rel="noopener">PolyForm Noncommercial License 1.0.0</a>. Commercial use or reuse is prohibited without written permission.</footer>
 
 <script>
 const S = {findHTML:'', find:null, scr:{}, qsOpen:{}, jobs:[], tab:'inbox', view:'jobs', open:new Set(), drafts:{}, jd:{}, jdMsg:{}, prov:{}, tpl:{}, resumeList:null, show:{}, counts:{}, settings:null};
@@ -663,6 +674,16 @@ function verHTML(key, d){
 async function onAct(t){
   const a = t.dataset.act, key = t.dataset.k, id = +t.dataset.id;
   try{
+    if(a==='about_open'){
+      setView('settings'); for(let i=0; i<20 && !document.getElementById('about'); i++) await new Promise(r=>setTimeout(r,100));
+      document.getElementById('about')?.scrollIntoView({block:'start'}); return;
+    }
+    if(a==='upd_check'){
+      t.disabled = true; $('#ab_upd').textContent = 'Checking…';
+      const r = await api('/about/check', {}); S.about.update = r.update; $('#ab_upd').innerHTML = updateLine(r.update);
+      t.disabled = false; refreshUpdate(); return;
+    }
+    if(a==='upd_dismiss'){ await api('/about/dismiss', {version: t.dataset.v}); refreshUpdate(); return; }
     if(a==='q_linkedin'){
       const on = t.checked;
       if(on && !confirm('Include LinkedIn postings?\n\n' + (t.dataset.notice || '') + '\n\nClick OK to confirm you understand. Your confirmation and its time are recorded.')){ t.checked = false; return; }
@@ -895,6 +916,7 @@ function testRow(kind, src, label){
 }
 async function renderSettings(){
   const v = $('#view'); await loadSettings(); const s = S.settings;
+  try{ S.about = await api('/about'); }catch(e){}
   const q = await api('/search'); S.search = q; const c = q.config;
   const sq = (k, l, attrs='') => `<label class="fld">${l}<input data-sq="${k}" value="${esc(c[k])}" ${attrs}></label>`;
   const secret = (k, setKey, l, ph) => `<label class="fld">${l}<input data-sqs="${k}" type="password" autocomplete="new-password" placeholder="${c[setKey]?esc(c[k])+' (saved — paste to replace)':ph}"></label>`;
@@ -988,6 +1010,7 @@ async function renderSettings(){
       <div class="row" style="margin-top:10px"><a class="btn" href="/drafts/library" target="_blank" rel="noopener" style="text-decoration:none">Open draft library ↗</a>
         <span class="hint">Every draft by job, with time left before removal and downloads.</span></div></section>
 
+    ${aboutHTML(S.about)}
     <h3 class="sect">Problems log</h3>
     <section class="box"><h2>Problems log</h2>
       <div class="hint">Errors and notable events — failed sources, ratings and drafts that didn't work, email problems, each search's result — newest at the bottom. Kept in your data folder (<code>logs/noble-search.log</code>); no keys or resume text are written to it.</div>
@@ -1369,9 +1392,53 @@ async function onSearchAct(a, t){
   }
 }
 
+function updateLine(u){
+  if(!u) return '';
+  if(u.newer) return `<b>Noble Search v${esc(u.latest)} is available</b> (you have v${esc(u.current)}). <a href="${esc(u.url)}" target="_blank" rel="noopener">What's new ↗</a>`;
+  if(u.error && !u.latest) return `<span class="err">${esc(u.error)}</span>`;
+  if(u.checked) return `✓ You're up to date (v${esc(u.current)}) · checked ${esc(niceDay(u.checked.slice(0,10)))}${u.error?` · <span class="hint">${esc(u.error)}</span>`:''}`;
+  return u.enabled ? 'Not checked yet — the first check runs a minute after the app starts.' : 'Update checks are off.';
+}
+function aboutHTML(a){
+  if(!a) return '';
+  const L = a.links, u = a.update, ln = (k, t) => `<a href="${esc(L[k])}" target="_blank" rel="noopener">${t}</a>`;
+  return `<h3 class="sect" id="about">About</h3>
+    <section class="box about"><h2>Noble Search v${esc(a.version)}</h2>
+      <div class="hint">A job search portal for transitioning military and veterans: it searches employers' own hiring sites, USAJOBS and the big job boards, rates each job against your background, and helps you tailor a resume and application. Self-hosted — your data stays on your server.</div>
+      <p id="ab_upd" style="margin:10px 0 4px">${updateLine(u)}</p>
+      <div class="row" style="gap:8px;margin-bottom:6px"><button class="btn sm" data-act="upd_check">Check now</button>
+        ${u.newer?ln('update_help','How to update ↗'):''}
+        <label class="radio"><input type="checkbox" data-set="update_check" ${u.enabled?'checked':''}> Check for updates once a day</label></div>
+      <div class="hint">The check is one anonymous request to GitHub for the latest release — nothing about you or your data is sent, and nothing is installed automatically. Click <b>Save settings</b> after changing it.</div>
+      <dl>
+        <dt>Website</dt><dd>${ln('website','cybercloudai.tech/noble-search')}</dd>
+        <dt>Support</dt><dd><a href="mailto:${esc(a.support_email)}">${esc(a.support_email)}</a> · ${ln('bug','Report a bug')} · ${ln('employer','An employer can’t be read')} · ${ln('feature','Suggest a feature')}</dd>
+        <dt>What's new</dt><dd>${ln('releases','Releases')} · ${ln('changelog','Changelog')}</dd>
+        <dt>Source code</dt><dd>${ln('repo','github.com/kghaynes/noble-search')}</dd>
+        <dt>Policies</dt><dd>${ln('privacy','Privacy policy')} · ${ln('security','Security (report a vulnerability)')} · ${ln('license','License: PolyForm Noncommercial 1.0.0')} — free for personal and nonprofit use; commercial use needs written permission</dd>
+        <dt>Support the project</dt><dd>${ln('sponsor','GitHub Sponsors')} · ${ln('kofi','Ko-fi')}</dd>
+        <dt>Job data</dt><dd>USAJOBS (official API) · JSearch, which reads Google for Jobs (Indeed, Glassdoor, ZipRecruiter and more; LinkedIn only if you turn it on, title and link only) · employers' own hiring sites</dd>
+        <dt>Made by</dt><dd>Kenneth Haynes and ${ln('company','CyberCloudAI.tech')}</dd>
+      </dl>
+      <div class="hint">Not affiliated with or endorsed by the Department of Defense, the Department of Veterans Affairs, LinkedIn or any employer. Noble Search is not a job board and doesn't apply for you. Ratings and drafts are written by AI: check every fact before you send anything.</div>
+    </section>`;
+}
+async function refreshUpdate(){
+  try{
+    const a = await api('/about'); S.about = a;
+    $('#ver').textContent = 'v' + a.version;
+    const u = a.update, bar = $('#updbar');
+    bar.hidden = !u.show_banner;
+    bar.innerHTML = u.show_banner ? `<div class="updbar">${updateLine(u)}
+      ${'<a href="'+esc(a.links.update_help)+'" target="_blank" rel="noopener">How to update ↗</a>'}
+      <button class="linkbtn" data-act="upd_dismiss" data-v="${esc(u.latest)}">Dismiss</button></div>` : '';
+  }catch(e){}
+}
+
 /* ============================== start ============================== */
 load();
 loadSettings();
+refreshUpdate();
 </script>
 </body>
 </html>

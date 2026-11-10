@@ -26,6 +26,7 @@ import profile_store as ps
 import resume
 import applog
 import closures
+import updates
 import discover
 import insight
 import search
@@ -462,8 +463,10 @@ class Handler(BaseHTTPRequestHandler):
                                     "linkedin_notice": search.LINKEDIN_NOTICE,
                                     "readers": sources.READER_LABELS, "progress": progress(),
                                     "title_presets": {k: {"label": l, "include": v} for k, (l, v) in sources.TITLE_PRESETS.items()}})
+        if path == "/about":
+            return self._json(200, updates.about())
         if path == "/health":
-            return self._json(200, {"ok": True})
+            return self._json(200, {"ok": True, "version": updates.__version__})
         return self._json(404, {"error": "not found"})
 
     def _post_extra(self, path, data):
@@ -527,6 +530,10 @@ class Handler(BaseHTTPRequestHandler):
             return insight.why_not(data)
         if path == "/search/suggest":
             return suggest.suggest(str(data.get("what") or ""))
+        if path == "/about/check":
+            return {"ok": True, "update": updates.check(force=True)}
+        if path == "/about/dismiss":
+            return {"ok": True, "update": updates.dismiss(data.get("version"))}
         if path == "/search/linkedin":
             return {"ok": True, "config": search.set_linkedin(bool(data.get("on")), bool(data.get("confirmed")))}
         if path == "/search/stop":
@@ -610,6 +617,7 @@ def main():
     drafts.init()
     search.init(db, _db_lock)
     closures.init(db, _db_lock)
+    updates.init(db, _db_lock)
     try:
         linkedin_cleanup()
     except Exception as exc:  # noqa: BLE001
@@ -618,6 +626,7 @@ def main():
     search.notify.init(db, _db_lock)
     fit.init(db, _db_lock)
     threading.Thread(target=housekeeping_loop, daemon=True).start()
+    threading.Thread(target=updates.loop, daemon=True).start()
     threading.Thread(target=search.scheduler_loop, args=(LISTING_FIELDS,), daemon=True).start()
 
     def rate_backlog():  # rate anything left unrated (e.g. after an upgrade or restart)
