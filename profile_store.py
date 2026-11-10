@@ -64,6 +64,7 @@ SETTINGS_DEFAULTS = {
     # swap name, street address, phone, email and LinkedIn for placeholders before anything goes to the
     # model, and cut clearance details to level + status (privacy.py). On by default.
     "redact_pii": True,
+    "update_check": True,   # once a day, ask GitHub for the latest release (updates.py); nothing about you is sent
 }
 
 
@@ -243,7 +244,7 @@ def save_settings(data):
                     v = max(4096, min(131072, int(v)))
                 except (TypeError, ValueError):
                     v = SETTINGS_DEFAULTS[k]
-            elif k == "redact_pii":
+            elif k in ("redact_pii", "update_check"):
                 v = v if isinstance(v, bool) else str(v).strip().lower() not in ("false", "0", "off", "no", "")
             elif k == "temperature":
                 try:

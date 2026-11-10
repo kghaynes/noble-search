@@ -31,8 +31,9 @@ Noble Search sends data out only for the features you turn on, and only to the s
 | **Employer job boards** (Workday, Greenhouse, Lever, Ashby, SmartRecruiters, BambooHR, Eightfold, company career pages) | Daily search, "Find job board", "Fetch posting" | A normal web request for the employer's public job list or posting | Anything about you |
 | **Your email provider (SMTP)**, if you set it up | Morning summary | The summary, sent to you: job titles, companies, fit ratings and reasons | Your resumes |
 | **ntfy**, if you set it up | Morning summary | A short push: the subject line and counts (e.g. "3 new · 1 High · 2 Med") | Job details, your profile, resumes |
+| **GitHub** (`api.github.com`), unless you turn it off | Once a day, and when you click **Check now** in Settings → About | One anonymous request for the latest Noble Search release. Like any web request, it carries your internet address and the app's version | Anything about you, your jobs or your settings; no account, key or ID |
 
-Noble Search has no analytics, no tracking and no "phone home". It sends nothing to the Noble Search author or to GitHub. (Tips through GitHub Sponsors or Ko-fi are handled by those sites, not by the app.)
+Noble Search has no analytics and no tracking. It sends nothing to the Noble Search author. The only request it makes on its own is the daily update check above, which asks GitHub whether a newer release exists and never downloads or installs anything. Turn it off in **Settings → About → Check for updates once a day**. (Tips through GitHub Sponsors or Ko-fi are handled by those sites, not by the app.)
 
 ## How your personal details are hidden from the AI
 
@@ -78,4 +79,4 @@ Keys and passwords are stored in files only the file owner can read. See [SECURI
 
 ## Questions
 
-Open a [discussion](https://github.com/kghaynes/noble-search/discussions) on GitHub. Don't post personal data there.
+Email [support@cybercloudai.tech](mailto:support@cybercloudai.tech), or open a [discussion](https://github.com/kghaynes/noble-search/discussions) on GitHub. Don't post personal data on GitHub.

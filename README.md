@@ -585,7 +585,7 @@ Your devices talk over a private, encrypted network, and nothing is exposed to t
 
 ## Updating, backing up, stopping and removing
 
-**Update to the newest version.** Your data is kept.
+**Update to the newest version.** Your data is kept. Noble Search checks GitHub once a day and shows a banner when a newer version is out ("What's new" opens the release notes). It never updates itself; run the command below when you're ready. The version you're running is at the bottom of every page and in **Settings → About**.
 
 ```bash
 cd noble-search
@@ -712,6 +712,14 @@ Besides Python itself, the only library used is `python-docx`.
 - **What changed in each version:** [CHANGELOG.md](CHANGELOG.md)
 
 ---
+
+## About, support and policies
+
+**Settings → About**, or **About** at the bottom of any page, shows:
+- **Version and updates:** your version, whether a newer one is out, and a **Check now** button. To turn off the daily check, untick **Check for updates once a day** there.
+- **Help:** the website, the support email ([support@cybercloudai.tech](mailto:support@cybercloudai.tech)), and links to report a bug, ask for an employer that can't be read, or suggest a feature.
+- **Policies:** the [privacy policy](PRIVACY.md), [security policy](SECURITY.md) and [license](LICENSE.md).
+- **Background:** where the job data comes from, and ways to support the project.
 
 ## Supporting Noble Search
 

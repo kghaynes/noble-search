@@ -4,14 +4,19 @@ All notable changes are listed here. Versions follow [semantic versioning](https
 
 ## [Unreleased]
 
-### Added
-- **Your personal details are hidden from the AI.** Before a fit rating, draft or suggestion is sent to Claude (or a local model), your name, street address, phone, email and LinkedIn link are swapped for placeholders like `{{NAME}}`, and the real values are put back in on your computer when the reply comes in. Other people's contact details in a posting get their own placeholders. Your clearance is sent as level and status only (e.g. "Active TS/SCI"). Polygraph and investigation details are removed from your profile, resumes and career inventory, while a posting's own clearance requirements are sent unchanged so fit ratings can still flag them. The one troubleshooting copy of a failed reply is saved with placeholders too. On by default; **Settings → Claude API → Hide my personal details from the AI** turns it off. New **PRIVACY.md** explains what is stored where, what leaves your machine and to whom, what is hidden from the AI, what Anthropic keeps, logs, and how to delete your data (linked from the README and the setting). The README's *Privacy and security* section also explains what Anthropic keeps under your own account's terms (30 days by default, no training, longer if flagged, zero retention only with your own agreement).
+## [0.4.1] — 2026-11-10
+Your personal details hidden from the AI, LinkedIn handled the way LinkedIn requires, an About page with support links and policies, and an update check.
 
-### Fixed
-- **Re-posting sites skipped:** jobleads.com, jobmesh.io and trabajos.univision.com are now on the default JSearch skip list. They pass JSearch only a ~500-character teaser and hide the full posting behind a JavaScript sign-up page, so fit ratings ran on almost nothing and "Fetch posting" failed with "loads its text with JavaScript". Existing installs keep their saved list: add these under **Search → Job-board searches (JSearch) → Skip these re-posting sites**.
+### Added
+- **About.** **Settings → About**, also linked from the footer, shows your version and update status, the website, the support email, links to report a bug or ask for an employer, release notes, the privacy and security policies, the license, where the job data comes from, and ways to support the project. The version also appears at the bottom of every page and in `/health`.
+- **Update check.** Once a day the app asks GitHub for the latest release, with one anonymous request and nothing about you sent. When a newer version is out, a banner links to what's new and how to update, and **Dismiss** hides it until the next version. It never installs anything. **Check now** and an on/off switch are in Settings → About. The privacy policy now describes this request.
+- **Your personal details are hidden from the AI.** Before a fit rating, draft or suggestion is sent to Claude (or a local model), your name, street address, phone, email and LinkedIn link are swapped for placeholders like `{{NAME}}`, and the real values are put back in on your computer when the reply comes in. Other people's contact details in a posting get their own placeholders. Your clearance is sent as level and status only (e.g. "Active TS/SCI"). Polygraph and investigation details are removed from your profile, resumes and career inventory, while a posting's own clearance requirements are sent unchanged so fit ratings can still flag them. The one troubleshooting copy of a failed reply is saved with placeholders too. On by default; **Settings → Claude API → Hide my personal details from the AI** turns it off. New **PRIVACY.md** explains what is stored where, what leaves your machine and to whom, what is hidden from the AI, what Anthropic keeps, logs, and how to delete your data (linked from the README and the setting). The README's *Privacy and security* section also explains what Anthropic keeps under your own account's terms (30 days by default, no training, longer if flagged, zero retention only with your own agreement).
 
 ### Changed
 - **LinkedIn postings are off by default, and title-and-link only when on.** LinkedIn doesn't permit showing its job details in apps like this. Job-board results published by LinkedIn are now dropped inside the search, before anything is saved or shown. **Include LinkedIn postings** (Search page → Schedule) turns them on after a confirmation explaining the limits; your confirmation and its time are recorded. When on, a LinkedIn job shows only its title, its company and an **Also listed on LinkedIn ↗** link. Paste the description yourself into Resume & apply to draft a resume, because Noble Search never opens LinkedIn pages. Jobs that are also on an employer's site keep the employer's details and gain the LinkedIn link. LinkedIn jobs are still rated from their title and company, flagged **⚠ Title-only rating — paste the description for a full rating**; **Rate with this description** in Resume & apply saves your pasted description and re-rates the job in full. On upgrade, jobs known only from LinkedIn are removed once (watchlist ones are reduced to title, company and link). See the README's *LinkedIn postings* section.
+
+### Fixed
+- **Re-posting sites skipped:** jobleads.com, jobmesh.io and trabajos.univision.com are now on the default JSearch skip list. They pass JSearch only a ~500-character teaser and hide the full posting behind a JavaScript sign-up page, so fit ratings ran on almost nothing and "Fetch posting" failed with "loads its text with JavaScript". Existing installs keep their saved list: add these under **Search → Job-board searches (JSearch) → Skip these re-posting sites**.
 
 ## [0.4.0] — 2026-11-09
 Know when postings come down — and which employers you need to apply to fast. Plus per-job resume choice and sturdier drafts.
@@ -111,7 +116,8 @@ First public release.
 - Morning email and ntfy push; Draft Library; 30-day retention with a permanent watchlist.
 - Getting-started checklist; ✨ Suggest towns and searches; Claude API by default with optional local Ollama.
 
-[Unreleased]: https://github.com/kghaynes/noble-search/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/kghaynes/noble-search/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/kghaynes/noble-search/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/kghaynes/noble-search/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/kghaynes/noble-search/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/kghaynes/noble-search/compare/v0.2.1...v0.3.0
