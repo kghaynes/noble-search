@@ -53,6 +53,111 @@ program manager|project manager"""),
     "all": ("Any title (use with care — many results)", "*"),
 }
 
+# Seniority levels people can pick ("all" is the "Require a seniority word" switch turned off).
+SENIORITY_LEVELS = [k for k in TITLE_PRESETS if k != "all"]
+DEFAULT_LEVEL = "executive"
+
+
+def _split_alternatives(line):
+    """Split a pattern line at its top-level '|' (not inside parentheses or after a backslash)."""
+    parts, cur, depth, i = [], "", 0, 0
+    while i < len(line):
+        ch = line[i]
+        if ch == "\\" and i + 1 < len(line):
+            cur += line[i:i + 2]
+            i += 2
+            continue
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif ch == "|" and depth == 0:
+            parts.append(cur)
+            cur = ""
+            i += 1
+            continue
+        cur += ch
+        i += 1
+    parts.append(cur)
+    return [p.strip() for p in parts]
+
+
+def _plain_alternative(alt):
+    """'\\bvp\\b' -> 'vp', 'senior manager' -> 'senior manager'; None if it needs pattern characters."""
+    exact = alt.startswith("\\b") and alt.endswith("\\b")
+    word = alt[2:-2] if exact else alt
+    if not re.fullmatch(r"[a-z0-9]+(?: [a-z0-9]+)*", word):
+        return None
+    if exact and len(word) > 3:
+        return None   # a plain word this long would also match endings ("chief" -> "chiefs"), so keep it exact
+    return word
+
+
+def readable_lines(text):
+    """A title list as people read it: one plain word or phrase per line. '\\bcio\\b|\\bcto\\b' becomes
+    'cio' and 'cto'; lines that still need pattern characters ('sr\\.? manager') are kept as they are.
+    Keeps and drops the same titles as the original list (tests/test_seniority.py checks this)."""
+    out = []
+    for line in str(text or "").splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        if not PATTERN_CHARS.search(s):
+            out.append(s)
+            continue
+        alts = _split_alternatives(s)
+        plain = [_plain_alternative(a) for a in alts]
+        if any(p is None and not PATTERN_CHARS.search(a) for p, a in zip(plain, alts)):
+            out.append(s)          # a piece like "principal," only works inside the whole pattern
+            continue
+        out += [p if p is not None else a for p, a in zip(plain, alts)]
+    return "\n".join(out)
+
+
+def _list_key(text):
+    return [l.strip().lower() for l in str(text or "").splitlines() if l.strip() and not l.strip().startswith("#")]
+
+
+def same_list(a, b):
+    """True when two title lists hold the same lines (ignoring blank lines, case and spacing)."""
+    return _list_key(a) == _list_key(b)
+
+
+def preset_for(text):
+    """The level whose default list this text is (raw or readable form), else None."""
+    for k, (_, inc) in TITLE_PRESETS.items():
+        if same_list(text, inc) or same_list(text, readable_lines(inc)):
+            return k
+    return None
+
+
+def migrate_title_include(text):
+    """Settings from before the seniority switch: one 'title_include' list -> switch, level, per-level edits.
+    Behavior stays exactly the same."""
+    text = str(text or "")
+    if not text.strip():
+        return {"title_seniority_on": True, "title_level": DEFAULT_LEVEL, "title_include_by_level": {}}
+    if any(l.strip() == "*" for l in text.splitlines()):
+        return {"title_seniority_on": False, "title_level": DEFAULT_LEVEL, "title_include_by_level": {}}
+    k = preset_for(text)
+    if k:
+        return {"title_seniority_on": True, "title_level": k, "title_include_by_level": {}}
+    return {"title_seniority_on": True, "title_level": DEFAULT_LEVEL, "title_include_by_level": {DEFAULT_LEVEL: text}}
+
+
+def effective_include(cfg):
+    """The title list searches use. Switch off -> '*' (any title). Otherwise the level's edited list if it has
+    one, else that level's default list exactly. Configs from before the switch use their 'title_include'."""
+    cfg = cfg or {}
+    if not any(k in cfg for k in ("title_seniority_on", "title_level", "title_include_by_level")):
+        return cfg.get("title_include") or DEFAULT_TITLE_INCLUDE
+    if cfg.get("title_seniority_on") is False:
+        return "*"
+    level = cfg.get("title_level") if cfg.get("title_level") in SENIORITY_LEVELS else DEFAULT_LEVEL
+    edited = (cfg.get("title_include_by_level") or {}).get(level) or ""
+    return edited if edited.strip() else TITLE_PRESETS[level][1]
+
+
 INTERNAL_ONLY = re.compile(r"\binternal (candidates?|applicants?|employees?|to (the )?department)( only)?\b|\binternal only\b|\bcurrent employees only\b", re.I)
 
 DEFAULT_TITLE_EXCLUDE = """internal (candidates|applicants|to department) only|internal only
@@ -331,7 +436,7 @@ class Context:
     """Title/location/age rules shared by every reader, plus per-run counters."""
 
     def __init__(self, cfg, profile):
-        inc = cfg.get("title_include") or DEFAULT_TITLE_INCLUDE
+        inc = effective_include(cfg)
         self.any_title = any(l.strip() == "*" for l in inc.splitlines())
         self.include = _compile_lines("\n".join(l for l in inc.splitlines() if l.strip() != "*"))
         self.exclude = _compile_lines(cfg["title_exclude"] if "title_exclude" in cfg else DEFAULT_TITLE_EXCLUDE)

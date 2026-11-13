@@ -462,7 +462,9 @@ class Handler(BaseHTTPRequestHandler):
                                     "notify": search.notify.status(), "closures": closures.summary(),
                                     "linkedin_notice": search.LINKEDIN_NOTICE,
                                     "readers": sources.READER_LABELS, "progress": progress(),
-                                    "title_presets": {k: {"label": l, "include": v} for k, (l, v) in sources.TITLE_PRESETS.items()}})
+                                    "seniority_levels": sources.SENIORITY_LEVELS,
+                                    "title_presets": {k: {"label": l, "include": v, "readable": sources.readable_lines(v)}
+                                                      for k, (l, v) in sources.TITLE_PRESETS.items()}})
         if path == "/about":
             return self._json(200, updates.about())
         if path == "/health":
