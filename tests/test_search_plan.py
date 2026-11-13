@@ -65,5 +65,25 @@ class Areas(unittest.TestCase):
         self.assertIsNone(ctx(work_modes="On-site").where("Huntsville, AL"))
 
 
+
+class Locality(unittest.TestCase):
+    def test_home_town_always_counts_and_wins_a_tie(self):
+        c = sources.Context({"local_places": "Huntsville, AL"}, {"home_location": "Melbourne, FL", "work_modes": "On-site"})
+        self.assertEqual(c.home_state, "FL")
+        self.assertEqual(sources.jsearch_where(c, {"job_city": "Melbourne", "job_state": "FL"}), "local")
+        self.assertEqual(sources.jsearch_where(c, {"job_city": "Huntsville", "job_state": "AL"}), "local")
+        self.assertEqual(len([p for p in c.places if p[0] == "melbourne"]), 1)
+        c2 = sources.Context({"local_places": "Melbourne, FL\nPalm Bay, FL"}, {"home_location": "Melbourne, FL"})
+        self.assertEqual([p[2] for p in c2.places], ["Melbourne, FL", "Palm Bay, FL"])   # listed home not doubled
+
+    def test_jsearch_where(self):
+        c = sources.Context({"local_places": "Melbourne, FL\nPalm Bay, FL"}, {"home_location": "Melbourne, FL",
+                                                                              "work_modes": "Hybrid, Remote"})
+        self.assertEqual(sources.jsearch_where(c, {"job_city": "Palm Bay", "job_state": "FL", "job_country": "US"}), "local")
+        self.assertEqual(sources.jsearch_where(c, {"job_city": "Orlando", "job_state": "FL", "job_country": "US"}), None)
+        self.assertEqual(sources.jsearch_where(c, {"job_city": "Austin", "job_state": "TX", "job_is_remote": True}), "remote")
+        self.assertEqual(sources.jsearch_where(c, {"job_location": "London, UK", "job_is_remote": True}), None)
+
+
 if __name__ == "__main__":
     unittest.main()
