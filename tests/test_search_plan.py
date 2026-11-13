@@ -67,3 +67,17 @@ class Areas(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Locality(unittest.TestCase):
+    def test_home_state_tie_goes_to_first_listed(self):
+        c = sources.Context({"local_places": "Huntsville, AL\nMelbourne, FL"}, {"home_location": "Melbourne, FL"})
+        self.assertEqual(c.home_state, "AL")
+
+    def test_jsearch_where(self):
+        c = sources.Context({"local_places": "Melbourne, FL\nPalm Bay, FL"}, {"home_location": "Melbourne, FL",
+                                                                              "work_modes": "Hybrid, Remote"})
+        self.assertEqual(sources.jsearch_where(c, {"job_city": "Palm Bay", "job_state": "FL", "job_country": "US"}), "local")
+        self.assertEqual(sources.jsearch_where(c, {"job_city": "Orlando", "job_state": "FL", "job_country": "US"}), None)
+        self.assertEqual(sources.jsearch_where(c, {"job_city": "Austin", "job_state": "TX", "job_is_remote": True}), "remote")
+        self.assertEqual(sources.jsearch_where(c, {"job_location": "London, UK", "job_is_remote": True}), None)

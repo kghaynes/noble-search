@@ -196,6 +196,8 @@ STATES = {
 FOREIGN = re.compile(r"\b(australia|united kingdom|england|scotland|canada|india|japan|germany|france|"
                      r"mexico|singapore|poland|saudi|emirates|uae|korea|israel|italy|spain|netherlands|"
                      r"uk|philippines|brazil|norway|qatar|kuwait|bahrain|jpn|aus|gbr|can|mex|ind|deu)\b")
+NORM_SPLIT = r"[-_/|~+]"
+STATE_ABBR_IN_RAW = r"(,\s*|\bus[a]?\s|\bus\b\s?|^){ab}\b"   # a state abbreviation in the raw location text
 REMOTE_RE = re.compile(r"\bremote\b|\btelework|\bwork from home\b|\bwfh\b|\bvirtual\b|\banywhere\b")
 
 
@@ -419,7 +421,7 @@ def show_term(line):
 
 def _norm(s):
     s = urllib.parse.unquote(str(s or ""))
-    return re.sub(r"\s+", " ", re.sub(r"[-_/|~+]", " ", s)).strip().lower()
+    return re.sub(r"\s+", " ", re.sub(NORM_SPLIT, " ", s)).strip().lower()
 
 
 # ---- search plan rules (spec rules/search.json) ----
@@ -488,7 +490,8 @@ class Context:
             places.append((_norm(name), st, line))
         self.places = places
         states = [p[1] for p in places if p[1]]
-        self.home_state = max(set(states), key=states.count) if states else ""
+        # most common state in the town list; a tie goes to the state listed first (deterministic, spec section 12)
+        self.home_state = max(states, key=states.count) if states else ""
         self.home_state_name = STATES.get(self.home_state, "")
         self.home_city = home_town(profile) or (places[0][2] if places else "")
         if not places and self.home_city:  # no town list yet: at least count the home town itself
@@ -603,7 +606,7 @@ class Context:
         for ab, nm in STATES.items():
             if ab == hs:
                 continue
-            if re.search(rf"(,\s*|\bus[a]?\s|\bus\b\s?|^){ab}\b", raw) or re.search(rf"\b{nm}\b", t):
+            if re.search(STATE_ABBR_IN_RAW.format(ab=ab), raw) or re.search(rf"\b{nm}\b", t):
                 other_state = True
                 break
         if self.allow_local:
@@ -611,7 +614,7 @@ class Context:
                 if name and re.search(rf"\b{re.escape(name)}\b", t):
                     # the place's own state counts too (an area in another state, e.g. Huntsville, AL)
                     own_state = bool(st) and st in STATES and st != hs and (
-                        re.search(rf"(,\s*|\bus[a]?\s|\bus\b\s?|^){re.escape(st)}\b", raw) is not None or
+                        re.search(STATE_ABBR_IN_RAW.format(ab=re.escape(st)), raw) is not None or
                         re.search(rf"\b{STATES[st]}\b", t) is not None)
                     if home_state_hit or own_state or (not other_state and not foreign):
                         return "local"
@@ -1391,6 +1394,13 @@ def jsearch_items(j):
     return data if isinstance(data, list) else []
 
 
+def jsearch_where(ctx, x):
+    """'local', 'remote' or None for one JSearch result (spec section 12)."""
+    is_remote = bool(x.get("job_is_remote")) or "remote" in str(x.get("work_arrangement") or "").lower()
+    loc = ", ".join(filter(None, [x.get("job_city"), x.get("job_state"), x.get("job_country")])) or x.get("job_location") or ""
+    return ctx.where(loc, remote_flag=is_remote, loose_remote=False)
+
+
 def jsearch_posted(x):
     d = parse_date(x.get("job_posted_at_datetime_utc") or x.get("job_posted_at_timestamp") or x.get("date_posted"))
     if d:
@@ -1546,9 +1556,7 @@ def read_jsearch(cfg, ctx):
             posted = jsearch_posted(x)
             if not ctx.age_ok(posted):
                 continue
-            is_remote = bool(x.get("job_is_remote")) or "remote" in str(x.get("work_arrangement") or "").lower()
-            loc = ", ".join(filter(None, [x.get("job_city"), x.get("job_state"), x.get("job_country")])) or x.get("job_location") or ""
-            w = ctx.where(loc, remote_flag=is_remote, loose_remote=False)
+            w = jsearch_where(ctx, x)
             if w and is_linkedin(x):
                 rows.append({**linkedin_row(x), "_line": li})
                 line["kept"] += 1
