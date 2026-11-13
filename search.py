@@ -32,7 +32,10 @@ DEFAULTS = {
     "days": "Mon,Tue,Wed,Thu,Fri",
     "timezone": os.environ.get("TZ") or "America/New_York",
     "max_age_days": int(os.environ.get("MAX_AGE_DAYS", "30")),
-    "title_include": sources.DEFAULT_TITLE_INCLUDE,
+    "title_include": sources.DEFAULT_TITLE_INCLUDE,   # kept in step with the three below, for older readers
+    "title_seniority_on": True,                       # "Require a seniority word"; off = any title
+    "title_level": sources.DEFAULT_LEVEL,             # a key of sources.TITLE_PRESETS (not "all")
+    "title_include_by_level": {},                     # level -> your edited list; missing/blank = the level's default
     "title_exclude": sources.DEFAULT_TITLE_EXCLUDE,
     "title_fields": "",
     "local_places": sources.DEFAULT_PLACES,
@@ -82,6 +85,14 @@ _db = None  # (db_fn, db_lock) supplied by app.init
 
 
 # --------------------------------------------------------------------------- settings
+TITLE_KEYS = ("title_seniority_on", "title_level", "title_include_by_level")
+
+
+def reset_level(level):
+    """Forget your edits to one level's word list (back to its default)."""
+    return save_config({"title_include_by_level": {level: ""}})
+
+
 def get_config(include_secret=False):
     with _cfg_lock:
         try:
@@ -90,7 +101,11 @@ def get_config(include_secret=False):
         except (FileNotFoundError, json.JSONDecodeError):
             data = {}
     cfg = dict(DEFAULTS)
+    cfg["title_include_by_level"] = {}
     cfg.update({k: v for k, v in data.items() if k in DEFAULTS})
+    if not any(k in data for k in TITLE_KEYS) and "title_include" in data:
+        cfg.update(sources.migrate_title_include(data["title_include"]))   # saved before the seniority switch
+    cfg["title_include"] = sources.effective_include(cfg)
     if "jsearch_what" not in data and str(data.get("jsearch_queries") or "").strip():
         # settings from before "jobs to look for": split old search lines into phrases + exact searches
         phrases, exact = sources.split_search_lines(data["jsearch_queries"])
@@ -113,8 +128,14 @@ def save_config(new):
         if "jsearch_what" not in cur and str(cur.get("jsearch_queries") or "").strip() and "jsearch_what" in (new or {}):
             ph, ex = sources.split_search_lines(cur["jsearch_queries"])   # first save after the upgrade
             cur["jsearch_what"], cur["jsearch_queries"] = "\n".join(ph), "\n".join(ex)
+        new = dict(new or {})
+        if not any(k in cur for k in TITLE_KEYS) and "title_include" in cur:
+            cur.update(sources.migrate_title_include(cur["title_include"]))   # first save after the upgrade
+        if "title_include" in new and not any(k in new for k in TITLE_KEYS):
+            new.update(sources.migrate_title_include(new["title_include"]))   # an older client saving one list
+        new.pop("title_include", None)   # derived from the three seniority settings below
         # job phrases last: lines that name another place move into the exact searches
-        for k, v in sorted((new or {}).items(), key=lambda kv: kv[0] == "jsearch_what"):
+        for k, v in sorted(new.items(), key=lambda kv: kv[0] == "jsearch_what"):
             if k not in DEFAULTS or k in ("jsearch_linkedin", "jsearch_linkedin_ack"):
                 continue   # LinkedIn is switched only through set_linkedin(), which records the confirmation
             if k in SECRETS:
@@ -154,6 +175,23 @@ def save_config(new):
                     ZoneInfo(v)
                 except Exception:  # noqa: BLE001
                     raise ValueError(f"Unknown time zone: {v}")
+            elif k == "title_seniority_on":
+                v = v is True or str(v).strip().lower() in ("true", "1", "on", "yes")
+            elif k == "title_level":
+                v = v if v in sources.SENIORITY_LEVELS else sources.DEFAULT_LEVEL
+            elif k == "title_include_by_level":
+                if not isinstance(v, dict):
+                    raise ValueError("title_include_by_level must be an object")
+                edits = dict(cur.get("title_include_by_level") or {})
+                for level, text in v.items():   # only the levels sent change; a blank or default list = no edit
+                    if level not in sources.SENIORITY_LEVELS:
+                        continue
+                    text = str(text or "").strip()[:20000]
+                    if not text or sources.preset_for(text) == level:
+                        edits.pop(level, None)
+                    else:
+                        edits[level] = text
+                v = edits
             elif k == "boards":
                 if not isinstance(v, list):
                     raise ValueError("boards must be a list")
@@ -169,6 +207,10 @@ def save_config(new):
             else:
                 v = str(v)[:20000]
             cur[k] = v
+        if any(k in cur for k in TITLE_KEYS):
+            for k in TITLE_KEYS:   # always saved together, so the file is never read as "from before the switch"
+                cur.setdefault(k, {} if k == "title_include_by_level" else DEFAULTS[k])
+            cur["title_include"] = sources.effective_include(cur)
         os.makedirs(os.path.dirname(SEARCH_JSON), exist_ok=True)
         tmp = SEARCH_JSON + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:

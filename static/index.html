@@ -483,6 +483,7 @@ document.addEventListener('input', e => {
   if(e.target.dataset.jd !== undefined){ S.jd[e.target.dataset.jd] = e.target.value; return; }
   if(e.target.dataset.prov !== undefined){ S.prov[e.target.dataset.prov] = e.target.value; return; }
   if(e.target.dataset.tpl !== undefined){ S.tpl[e.target.dataset.tpl] = e.target.value; return; }
+  if(e.target.id === 'q_inc'){ senUI(); return; }
   if(e.target.dataset.scr !== undefined){ S.scr[e.target.dataset.scr] = e.target.value; S.qsOpen[e.target.dataset.scr] = true; return; }
   const key = e.target.dataset.notes; if(key===undefined) return;
   const v = e.target.value, sv = document.getElementById('sv-'+key);
@@ -1133,7 +1134,7 @@ async function applyFix(f){
     let lines = box.value.split('\n').map(s=>s.trim()).filter(Boolean);
     if(f.op==='add' && !lines.some(l=>l.toLowerCase()===f.value.toLowerCase())) lines.push(f.value);
     if(f.op==='remove') lines = lines.filter(l=>l.toLowerCase()!==f.value.toLowerCase());
-    box.value = lines.join('\n');
+    box.value = lines.join('\n'); if(box.id==='q_inc') senUI();
   }
   await api('/search/save', collectSearch());
   toast('Done — '+f.label.replace(/^./, c=>c.toLowerCase())+' (saved)');
@@ -1145,6 +1146,7 @@ async function renderSearch(keep){
   const v = $('#view'); if(!keep) v.innerHTML = '<div class="empty"><span class="spin"></span></div>';
   const d = await api('/search'); S.search = d; const c = d.config, st = d.status;
   if(!keep || !S.qBoards) S.qBoards = d.boards.map(b=>({...b}));
+  if(!keep || !S.levelEdits){ S.levelEdits = {...(c.title_include_by_level||{})}; S.level = c.title_level || 'executive'; S.senOn = c.title_seniority_on !== false; }
   const run = d.runs[0];
   const days = new Set(String(c.days||'').split(',').map(x=>x.trim()));
   const missing = [!c.usajobs_key_set && 'USAJOBS key', !c.jsearch_key_set && 'JSearch key', !c.email_enabled && 'morning email'].filter(Boolean);
@@ -1249,13 +1251,14 @@ async function renderSearch(keep){
       </div></section>
     <section class="box"><h2>What counts as a match</h2>
       <div class="grid2">
-        <label class="fld full">Start from a preset<select id="q_preset" data-act-change="q_preset"><option value="">Choose a level…</option>${Object.entries(d.title_presets||{}).map(([k,p])=>`<option value="${k}">${esc(p.label)}</option>`).join('')}</select>
-          <span class="hint">Fills the list below; edit it any way you like. "*" means any title.</span></label>
         <div class="fld full"><div class="hint">A job is kept when its title has <b>a seniority word</b> <i>and</i> (if you list any) <b>a field word</b>, and <b>no skip word</b>. Your background shapes the fit rating afterwards.</div>
           <div class="hint" style="margin-top:4px">Type plain words. Capitals, plurals and endings are handled for you (<i>program</i> also matches <i>programs</i>; <i>engineer</i> matches <i>engineering</i>), and short words like <i>IT</i> or <i>AI</i> only match as whole words. <i>Advanced: a line containing \ | ( ) is used as a pattern.</i></div>
           <span class="row" style="margin:6px 0 0"><button class="btn" type="button" data-act="q_sugtitles">✨ Suggest titles from my Profile &amp; military background</button><span class="hint" id="sg_titles"></span></span>
           <div id="sugTitles">${S.sugTitles ? sugTitlesHTML(S.sugTitles) : ''}</div></div>
-        <label class="fld">Seniority words — title must contain one (one per line)<textarea id="q_inc" rows="10">${esc(c.title_include)}</textarea></label>
+        <div class="fld" id="q_senbox"><label class="radio"><input type="checkbox" id="q_sen" data-act-change="q_sen" ${S.senOn?'checked':''}> <b>Require a seniority word</b></label>
+          <label class="fld" style="margin-top:6px">Level<select id="q_level" data-act-change="q_level">${(d.seniority_levels||[]).map(k=>`<option value="${k}" ${k===S.level?'selected':''}>${esc((d.title_presets[k]||{}).label||k)}</option>`).join('')}</select></label>
+          <label class="fld" style="margin-top:6px">Seniority words (one per line)<textarea id="q_inc" rows="10">${esc(levelText(S.level))}</textarea></label>
+          <span class="row" style="margin:2px 0 0;justify-content:space-between"><span class="hint">Titles must contain one of these words. Turn off to keep any title (many more results).</span><button class="linkbtn" type="button" id="q_reset" data-act="q_reset" hidden>Reset to default</button></span></div>
         <label class="fld">Field words — title must also contain one (one per line; leave empty for any field)<textarea id="q_fld" rows="10" placeholder="e.g.&#10;information technology&#10;cyber&#10;network&#10;program&#10;operations">${esc(c.title_fields||'')}</textarea></label>
         <label class="fld full">Skip titles containing (one per line)<textarea id="q_exc" rows="6">${esc(c.title_exclude)}</textarea></label>
         <label class="fld full">Towns that count as near home (one per line, "Town, ST")<textarea id="q_places" rows="6" placeholder="Type or paste towns, one per line, e.g.&#10;Melbourne, FL&#10;Palm Bay, FL&#10;Leave empty to use only your home town from the Profile">${esc(c.local_places)}</textarea></label>
@@ -1275,7 +1278,7 @@ async function renderSearch(keep){
       <button class="btn" data-act="q_check">Check my settings</button><span class="hint">Saving also checks them.</span></div>
     <div id="q_checkout">${S.checkHTML||''}</div>
   </div>`;
-  bindRunlog(); pollSearch(st, d);
+  bindRunlog(); senUI(); pollSearch(st, d);
 }
 function bindRunlog(){ const rl = document.querySelector('#q_daily details.runlog'); if(rl) rl.addEventListener('toggle', () => { S.runOpen = rl.open; }); }
 function pollSearch(st, d){
@@ -1313,10 +1316,21 @@ function readBoards(){
   document.querySelectorAll('#qboards tr').forEach(tr => { const b = S.qBoards[+tr.dataset.bi]; tr.querySelectorAll('[data-b]').forEach(el => b[el.dataset.b] = el.value.trim()); });
   return S.qBoards.filter(b => b.name && b.url).map(({name,url,type,note}) => ({name,url,type,note}));
 }
+// Seniority words: one list per level. Each level keeps its own edits; switching levels never overwrites another.
+function levelDefault(lv){ return ((S.search.title_presets||{})[lv]||{}).readable || ''; }
+function levelText(lv){ const e = (S.levelEdits||{})[lv]; return (e && e.trim()) ? e : levelDefault(lv); }
+function sameLines(a, b){ const k = t => String(t||'').split('\n').map(x=>x.trim().toLowerCase()).filter(x=>x && !x.startsWith('#')).join('\n'); return k(a) === k(b); }
+function keepLevelEdit(){ const box = $('#q_inc'); if(!box || !S.level) return; S.levelEdits[S.level] = sameLines(box.value, levelDefault(S.level)) ? '' : box.value; }
+function senUI(){ const on = $('#q_sen') && $('#q_sen').checked, box = $('#q_inc'); if(!box) return;
+  $('#q_level').disabled = !on; box.disabled = !on; $('#q_senbox').style.opacity = on ? '' : '.6';
+  $('#q_reset').hidden = !on || sameLines(box.value, levelDefault(S.level)); }
+function seniorityFields(){ keepLevelEdit(); const by = {};
+  (S.search.seniority_levels||[]).forEach(k => by[k] = (S.levelEdits[k]||'').trim() ? S.levelEdits[k] : '');
+  return {title_seniority_on: $('#q_sen').checked, title_level: S.level, title_include_by_level: by}; }
 function collectSearch(){
   const days = [...document.querySelectorAll('[data-qday]')].filter(x=>x.checked).map(x=>x.dataset.qday).join(',');
   return {enabled:$('#q_enabled').checked, run_time:$('#q_time').value, days, timezone:$('#q_tz').value, max_age_days:$('#q_age').value,
-    usajobs_min_grade:$('#q_ugrade').value, usajobs_nationwide:$('#q_unat').value, usajobs_agencies:$('#q_uag').value, title_include:$('#q_inc').value, title_fields:$('#q_fld').value, title_exclude:$('#q_exc').value,
+    usajobs_min_grade:$('#q_ugrade').value, usajobs_nationwide:$('#q_unat').value, usajobs_agencies:$('#q_uag').value, ...seniorityFields(), title_fields:$('#q_fld').value, title_exclude:$('#q_exc').value,
     local_places:$('#q_places').value, boards: readBoards(), jsearch_what:$('#q_jwhat').value, jsearch_queries:$('#q_jq').value,
     jsearch_budget:$('#q_jbudget').value, jsearch_pages:$('#q_jpages').value, jsearch_skip_sites:$('#q_jskip').value,
     ...(S.titleExamples ? {title_examples: S.titleExamples} : {})};
@@ -1350,7 +1364,7 @@ async function onSearchAct(a, t){
     const put = (id, words) => { const box = $('#'+id);
       const cur = a==='q_sugadd' ? box.value.split('\n').map(s=>s.trim()).filter(Boolean) : [];
       box.value = [...new Set([...cur, ...words])].join('\n'); };
-    put('q_inc', pick('levels')); put('q_fld', pick('fields')); put('q_exc', pick('skip'));
+    put('q_inc', pick('levels')); senUI(); put('q_fld', pick('fields')); put('q_exc', pick('skip'));
     S.titleExamples = (S.sugTitles.example_titles||[]).join('\n');   // saved with the settings; the check tests them
     S.sugTitles = null; $('#sugTitles').innerHTML = ''; $('#sg_titles').textContent = '';
     toast(a==='q_sugadd' ? 'Added — review the lists, then Save search settings' : 'Lists replaced — review, then Save search settings');
@@ -1377,9 +1391,9 @@ async function onSearchAct(a, t){
   }
   if(a==='q_addb'){ readBoards(); S.qBoards.push({name:'',url:'',type:'auto'}); $('#qboards').innerHTML = S.qBoards.map(boardRow).join(''); }
   if(a==='q_delb'){ readBoards(); S.qBoards.splice(+t.dataset.i,1); $('#qboards').innerHTML = S.qBoards.map(boardRow).join(''); }
-  if(a==='q_preset'){ const v = $('#q_preset').value; if(!v) return; const pr = S.search.title_presets[v];
-    if($('#q_inc').value.trim() && !confirm('Replace the title list with "'+pr.label+'"?')) { $('#q_preset').value=''; return; }
-    $('#q_inc').value = pr.include; toast('Title list filled in — click Save search settings'); }
+  if(a==='q_sen'){ S.senOn = $('#q_sen').checked; senUI(); return; }
+  if(a==='q_level'){ keepLevelEdit(); S.level = $('#q_level').value; $('#q_inc').value = levelText(S.level); senUI(); return; }
+  if(a==='q_reset'){ S.levelEdits[S.level] = ''; $('#q_inc').value = levelDefault(S.level); senUI(); toast('Back to the default list. Click Save search settings to keep it'); return; }
   if(a==='q_unat'){ $('#q_uagwrap').hidden = t.value!=='agencies'; return; }
   if(a==='q_suggest'){
     const what = t.dataset.what, box = what==='towns' ? $('#q_places') : what==='agencies' ? $('#q_uag') : $('#q_jwhat'), out = $('#sg_'+what);

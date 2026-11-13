@@ -92,7 +92,8 @@ def check(draft=None):
                     "Fewer jobs to look for means each runs more often.")
 
     # title words
-    inc, fld, exc = (_lines(cfg.get(k)) for k in ("title_include", "title_fields", "title_exclude"))
+    inc = _lines(sources.effective_include(cfg))
+    fld, exc = (_lines(cfg.get(k)) for k in ("title_fields", "title_exclude"))
     if not inc:
         add("warn", "There are no seniority words, so no job title can match. Add some (director, VP…) or a line with * for any title.")
     for name, lines in (("seniority", inc), ("field", fld), ("skip", exc)):
@@ -195,7 +196,7 @@ def _title_fixes(title, ex, cfg):
             fixes.append({"list": "title_include", "op": "add", "value": hit, "label": f"Add “{hit}” as a seniority word"})
         return fixes
     if ex["reason"].startswith("No field"):
-        inc = sources._compile_lines(cfg.get("title_include") or "")
+        inc = sources._compile_lines(sources.effective_include(cfg))
         cands = [w for w in _title_words(title) if not sources.first_match(inc, w) and w not in SENIORITY_HINTS]
         for w in cands[:2]:
             fixes.append({"list": "title_fields", "op": "add", "value": w, "label": f"Add “{w}” as a field word"})
