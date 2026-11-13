@@ -67,9 +67,14 @@ class Areas(unittest.TestCase):
 
 
 class Locality(unittest.TestCase):
-    def test_home_state_tie_goes_to_first_listed(self):
-        c = sources.Context({"local_places": "Huntsville, AL\nMelbourne, FL"}, {"home_location": "Melbourne, FL"})
-        self.assertEqual(c.home_state, "AL")
+    def test_home_town_always_counts_and_wins_a_tie(self):
+        c = sources.Context({"local_places": "Huntsville, AL"}, {"home_location": "Melbourne, FL", "work_modes": "On-site"})
+        self.assertEqual(c.home_state, "FL")
+        self.assertEqual(sources.jsearch_where(c, {"job_city": "Melbourne", "job_state": "FL"}), "local")
+        self.assertEqual(sources.jsearch_where(c, {"job_city": "Huntsville", "job_state": "AL"}), "local")
+        self.assertEqual(len([p for p in c.places if p[0] == "melbourne"]), 1)
+        c2 = sources.Context({"local_places": "Melbourne, FL\nPalm Bay, FL"}, {"home_location": "Melbourne, FL"})
+        self.assertEqual([p[2] for p in c2.places], ["Melbourne, FL", "Palm Bay, FL"])   # listed home not doubled
 
     def test_jsearch_where(self):
         c = sources.Context({"local_places": "Melbourne, FL\nPalm Bay, FL"}, {"home_location": "Melbourne, FL",

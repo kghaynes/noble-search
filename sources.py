@@ -488,18 +488,17 @@ class Context:
             name, _, st = line.partition(",")
             st = st.strip().upper()[:2]
             places.append((_norm(name), st, line))
+        self.home_city = home_town(profile) or (places[0][2] if places else "")
+        # The home town always counts as near home, listed or not (spec section 12): it goes first.
+        if self.home_city:
+            name, _, st = self.home_city.partition(",")
+            if not any(p[0] == _norm(name) for p in places):
+                places.insert(0, (_norm(name), st.strip().upper()[:2], self.home_city))
         self.places = places
         states = [p[1] for p in places if p[1]]
-        # most common state in the town list; a tie goes to the state listed first (deterministic, spec section 12)
+        # most common state among the places; a tie goes to the one first in the list (the home town's state)
         self.home_state = max(states, key=states.count) if states else ""
         self.home_state_name = STATES.get(self.home_state, "")
-        self.home_city = home_town(profile) or (places[0][2] if places else "")
-        if not places and self.home_city:  # no town list yet: at least count the home town itself
-            name, _, st = self.home_city.partition(",")
-            places = [(_norm(name), st.strip().upper()[:2], self.home_city)]
-            self.places = places
-            self.home_state = places[0][1]
-            self.home_state_name = STATES.get(self.home_state, "")
         self.radius = int(profile.get("radius_miles") or 30)
         self.radius_km = radius_km(self.radius)
         # Other areas: searched like home, and a result naming one of them counts as local
