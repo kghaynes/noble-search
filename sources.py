@@ -422,6 +422,38 @@ def _norm(s):
     return re.sub(r"\s+", " ", re.sub(r"[-_/|~+]", " ", s)).strip().lower()
 
 
+# ---- search plan rules (spec rules/search.json) ----
+SEARCH_DEFAULT_MODES = "On-site, Hybrid, Remote"
+SEARCH_LOCAL_WORDS = ("site", "hybrid", "office")
+SEARCH_REMOTE_WORD = "remote"
+SEARCH_NEAR_QUERY = "{phrase} in {place}"
+SEARCH_REMOTE_QUERY = "{phrase} remote"
+SEARCH_NO_HOME_NOTE = "Near-home searches skipped: add your home town on the Profile page."
+KM_PER_MILE = 1.609344
+RADIUS_KM_MIN, RADIUS_KM_MAX = 1, 500
+
+
+def search_areas(profile, home=""):
+    """Other places to search besides home: one per line (or ';'), trimmed, repeats and home removed (any case)."""
+    seen = {home.strip().lower()} if home.strip() else set()
+    out = []
+    for a in re.split(r"[\n;]", str((profile or {}).get("search_areas") or "")):
+        a = a.strip()
+        if a and a.lower() not in seen:
+            seen.add(a.lower())
+            out.append(a)
+    return out
+
+
+def radius_km(miles):
+    """Profile radius (miles) as the job board takes it (km), rounded half up; None when outside 1-500 km."""
+    try:
+        km = int(float(miles) * KM_PER_MILE + 0.5)
+    except (TypeError, ValueError):
+        return None
+    return km if RADIUS_KM_MIN <= km <= RADIUS_KM_MAX else None
+
+
 def home_town(profile):
     """The profile's home town as 'Town, ST' — from Home location, else from City, State. '' if neither can be read."""
     c = Context.__new__(Context)
@@ -443,9 +475,9 @@ class Context:
         self.fields = _compile_lines(cfg.get("title_fields") or "")   # optional: title must also name the field
         self.max_age = int(cfg.get("max_age_days") or 30)
         self.today = date.today()
-        modes = (profile.get("work_modes") or "On-site, Hybrid, Remote").lower()
-        self.allow_remote = "remote" in modes
-        self.allow_local = ("site" in modes or "hybrid" in modes or "office" in modes) or not self.allow_remote
+        modes = (str(profile.get("work_modes") or "").strip() or SEARCH_DEFAULT_MODES).lower()
+        self.allow_remote = SEARCH_REMOTE_WORD in modes
+        self.allow_local = any(w in modes for w in SEARCH_LOCAL_WORDS) or not self.allow_remote
         places = []
         for line in (cfg.get("local_places") or DEFAULT_PLACES).splitlines():
             line = line.strip()
@@ -466,6 +498,13 @@ class Context:
             self.home_state = places[0][1]
             self.home_state_name = STATES.get(self.home_state, "")
         self.radius = int(profile.get("radius_miles") or 30)
+        self.radius_km = radius_km(self.radius)
+        # Other areas: searched like home, and a result naming one of them counts as local
+        self.areas = search_areas(profile, self.home_city)
+        for a in self.areas:
+            name, _, st = a.partition(",")
+            if _norm(name) and not any(p[0] == _norm(name) for p in self.places):
+                self.places.append((_norm(name), st.strip().upper()[:2], a))
         self.detail_cap = int(cfg.get("detail_cap") or 60)
         self.max_pages = int(cfg.get("max_pages") or 150)
         self.log = []
@@ -570,7 +609,11 @@ class Context:
         if self.allow_local:
             for name, st, _ in self.places:
                 if name and re.search(rf"\b{re.escape(name)}\b", t):
-                    if home_state_hit or (not other_state and not foreign):
+                    # the place's own state counts too (an area in another state, e.g. Huntsville, AL)
+                    own_state = bool(st) and st in STATES and st != hs and (
+                        re.search(rf"(,\s*|\bus[a]?\s|\bus\b\s?|^){re.escape(st)}\b", raw) is not None or
+                        re.search(rf"\b{STATES[st]}\b", t) is not None)
+                    if home_state_hit or own_state or (not other_state and not foreign):
                         return "local"
         if self.allow_remote and (remote_flag or (loose_remote and REMOTE_RE.search(t))) and not foreign:
             return "remote"
@@ -1281,12 +1324,15 @@ def jsearch_plan(cfg, ctx, day=None):
     searches, notes = [], []
     local_ok = ctx.allow_local and bool(ctx.home_city)
     if ctx.allow_local and not ctx.home_city and phrases:
-        notes.append("Near-home searches skipped: add your home town on the Profile page.")
+        notes.append(SEARCH_NO_HOME_NOTE)
+    places = [ctx.home_city] + ctx.areas if local_ok else []
     for ph in phrases:
-        if local_ok:
-            searches.append({"phrase": ph, "mode": "near home", "q": f"{ph} in {ctx.home_city}", "remote": False})
+        for place in places:
+            searches.append({"phrase": ph, "mode": "near home", "q": SEARCH_NEAR_QUERY.format(phrase=ph, place=place),
+                             "remote": False, "place": place})
         if ctx.allow_remote:
-            searches.append({"phrase": ph, "mode": "remote", "q": f"{ph} remote", "remote": True})
+            searches.append({"phrase": ph, "mode": "remote", "q": SEARCH_REMOTE_QUERY.format(phrase=ph),
+                             "remote": True, "place": ""})
     for line in exact:
         searches.append({"phrase": line, "mode": "exact", "q": line.replace("{home}", ctx.home_city or "United States"),
                          "remote": bool(re.search(r"\bremote\b", line, re.I))})
@@ -1317,12 +1363,14 @@ def jsearch_queries(cfg, ctx):
     return [s["q"] for s in jsearch_plan(cfg, ctx)["today"]]
 
 
-def _jsearch_call(cfg, query, remote, page=1, pages=1, date_posted="month"):
+def _jsearch_call(cfg, query, remote, page=1, pages=1, date_posted="month", radius_km=None):
     key = (cfg.get("jsearch_api_key") or "").strip()
     url, hdr = JSEARCH_HOSTS.get(cfg.get("jsearch_provider") or "rapidapi", JSEARCH_HOSTS["rapidapi"])
     params = {"query": query, "page": page, "num_pages": pages, "date_posted": date_posted, "country": "us"}
     if remote:
         params.update(remote_jobs_only="true", work_from_home="true")
+    elif radius_km:
+        params["radius"] = radius_km   # around the place in the query; JSearch passes it to Google as a hint
     try:
         return http(f"{url}?{urllib.parse.urlencode(params)}", headers=hdr(key), timeout=60)
     except ReaderError as e:
@@ -1470,7 +1518,8 @@ def read_jsearch(cfg, ctx):
         st["lines"].append(line)
         li = len(st["lines"]) - 1
         try:
-            j = _jsearch_call(cfg, q, remote, pages=pages, date_posted=date_posted)
+            j = _jsearch_call(cfg, q, remote, pages=pages, date_posted=date_posted,
+                              radius_km=None if remote else ctx.radius_km)
         except ReaderError as e:
             st["errors"].append(str(e))
             if "limit" in str(e) or "key" in str(e):

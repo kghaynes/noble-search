@@ -30,6 +30,7 @@ PROFILE_DEFAULTS = {
     # search preferences (used for drafting context today; for multi-user search later)
     "home_location": "",
     "radius_miles": 30,
+    "search_areas": "",     # other towns/regions to search besides home, one per line (each runs its own near-home search)
     "work_modes": "On-site, Hybrid, Remote",
     "employment_types": "W2, 1099",
     "levels": "",
