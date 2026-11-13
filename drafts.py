@@ -14,6 +14,7 @@ import llm
 import privacy
 import profile_store as ps
 import resume
+import prompt_guard as guard
 
 DB_PATH = os.environ.get("DB_PATH", "/data/jobs.db")
 DRAFT_DIR = os.path.join(os.path.dirname(DB_PATH) or ".", "drafts")
@@ -192,7 +193,7 @@ def _keywords(r, settings, draft_text, source_text):
     if len((r.get("jd_text") or "").strip()) < 300:
         return None
     try:
-        raw, _, _ = llm.complete(settings, apply.KW_SYSTEM, "# JOB POSTING\n" + r["jd_text"][:15000] + "\n\nReturn the JSON now.",
+        raw, _, _ = llm.complete(settings, apply.KW_SYSTEM, "# JOB POSTING\n" + guard.posting(r["jd_text"][:15000]) + "\n\nReturn the JSON now.",
                                  provider=r["provider"], json_mode=True, max_tokens=1500)
         kws = llm.parse_json(raw).get("keywords") or []
         return apply.keyword_coverage(kws, draft_text, source_text)
