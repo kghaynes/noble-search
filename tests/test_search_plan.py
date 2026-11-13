@@ -65,9 +65,6 @@ class Areas(unittest.TestCase):
         self.assertIsNone(ctx(work_modes="On-site").where("Huntsville, AL"))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class Locality(unittest.TestCase):
     def test_home_state_tie_goes_to_first_listed(self):
@@ -81,3 +78,7 @@ class Locality(unittest.TestCase):
         self.assertEqual(sources.jsearch_where(c, {"job_city": "Orlando", "job_state": "FL", "job_country": "US"}), None)
         self.assertEqual(sources.jsearch_where(c, {"job_city": "Austin", "job_state": "TX", "job_is_remote": True}), "remote")
         self.assertEqual(sources.jsearch_where(c, {"job_location": "London, UK", "job_is_remote": True}), None)
+
+
+if __name__ == "__main__":
+    unittest.main()
