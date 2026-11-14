@@ -999,8 +999,70 @@ def _microdata(page, prop):
     return html.unescape(re.sub(r"<[^>]+>", " ", m.group(1))).strip() if m else ""
 
 
+# ---- job page reading (spec rules/job_page.json, section 13) ----
+JOB_DESC_MARKER = r'<(?:div|section|article)\b[^>]*\b(?:class|id)="[^"]*(?:job-?description|ats-description|posting-description|description__text|job-details)[^"]*"[^>]*>'
+JOB_TITLE_AT = r"^(.{3,}?)\s+at\s+([^|]{2,80})$"
+JOB_LOCATION_LINE = r"(?im)^[ \t]*(?:job[ \t]+)?location[ \t]*[: \t][ \t]*([^\n]{3,80})$"
+ADDED_SOURCE = "Added by you"
+READ_BLOCKED = {
+    "linkedin.com": "LinkedIn doesn't permit this app to read its job pages. Open the posting on LinkedIn, copy the details, and paste them here.",
+    "indeed.com": "Indeed blocks automated reading. Open the posting, copy the details, and paste them here.",
+}
+
+
+def _blocks(page):
+    """Each description block on the page, from its opening tag to the matching close tag, in page order
+    (a block inside an earlier one is skipped). Returns the blocks' HTML."""
+    out, pos = [], 0
+    for mk in re.finditer(JOB_DESC_MARKER, page, re.I):
+        if mk.start() < pos:
+            continue
+        tag = re.match(r"<(\w+)", mk.group(0)).group(1).lower()
+        depth, end = 0, len(page)
+        for t in re.finditer(rf"<(/?){tag}\b[^>]*>", page[mk.start():], re.I):
+            if t.group(0).endswith("/>"):
+                continue
+            depth += -1 if t.group(1) else 1
+            if depth == 0:
+                end = mk.start() + t.end()
+                break
+        out.append(page[mk.start():end])
+        pos = end
+    return out
+
+
+def _meta(page, prop):
+    m = re.search(rf'<meta[^>]+(?:property|name)="{re.escape(prop)}"[^>]+content="([^"]*)"', page) or \
+        re.search(rf'<meta[^>]+content="([^"]*)"[^>]+(?:property|name)="{re.escape(prop)}"', page)
+    return html.unescape(m.group(1)).strip() if m else ""
+
+
+def _ld_company(o):
+    org = o.get("hiringOrganization")
+    if isinstance(org, dict):
+        return html.unescape(str(org.get("name") or "")).strip()
+    return html.unescape(str(org or "")).strip()
+
+
 def parse_job_page(page):
-    """Pull title/date/locations/description from a job page (JSON-LD, then microdata, then plain HTML)."""
+    """Pull title/company/date/locations/description from a job page (JSON-LD, then microdata, then plain HTML),
+    then fill gaps: company from the site name or a 'Title at Company' page title, location from a 'Location' line."""
+    d = _parse_job_page(page)
+    if not d.get("company"):
+        d["company"] = _meta(page, "og:site_name")
+    m = re.match(JOB_TITLE_AT, d.get("title") or "")
+    if m and not d.get("structured"):
+        d["title"] = m.group(1).strip()
+        d["company"] = d["company"] or m.group(2).strip()
+    if not d.get("locations"):
+        lm = re.search(JOB_LOCATION_LINE, d.get("_header") or (d.get("description") or "")[:4000])
+        if lm:
+            d["locations"] = [lm.group(1).strip()]
+    d.pop("_header", None)
+    return d
+
+
+def _parse_job_page(page):
     o = _jsonld_posting(page)
     if o:
         sal = ""
@@ -1012,7 +1074,7 @@ def parse_job_page(page):
                 "closing": parse_date(o.get("validThrough")), "locations": _ld_locations(o),
                 "remote": str(o.get("jobLocationType") or "").upper() == "TELECOMMUTE",
                 "description": html_to_text(o.get("description")), "employment": o.get("employmentType") or "",
-                "salary": sal, "structured": True}
+                "salary": sal, "structured": True, "company": _ld_company(o)}
     if 'itemprop="title"' in page or 'itemprop="datePosted"' in page:
         loc = ", ".join(filter(None, [_microdata(page, "addressLocality"), _microdata(page, "addressRegion")]))
         desc_m = re.search(r'itemprop="description"[^>]*>(.*?)</span>\s*</span>|class="jobdescription"[^>]*>(.*?)</div>\s*</div>', page, re.S)
@@ -1020,12 +1082,41 @@ def parse_job_page(page):
             html_to_text(_microdata(page, "description"))
         return {"title": _microdata(page, "title"), "posted": parse_date(_microdata(page, "datePosted")), "closing": "",
                 "locations": [loc] if loc else [], "remote": False, "description": desc, "employment": "",
-                "salary": "", "structured": True}
+                "salary": "", "structured": True, "company": _microdata(page, "hiringOrganization")}
     t = re.search(r'<meta[^>]+property="og:title"[^>]+content="([^"]+)"', page) or re.search(r"<h1[^>]*>(.*?)</h1>", page, re.S)
+    # the longest description block when the page has them, else <main>, else the whole page
+    texts = [html_to_text(b) for b in _blocks(page)]
     body = re.search(r"<main\b.*?</main>", page, re.S | re.I)
+    desc = max(texts, key=len) if texts else html_to_text(body.group(0) if body else page)
     return {"title": html.unescape(re.sub(r"<[^>]+>", "", t.group(1))).strip() if t else "", "posted": "", "closing": "",
-            "locations": [], "remote": False, "description": html_to_text(body.group(0) if body else page)[:20000],
-            "employment": "", "salary": "", "structured": False}
+            "locations": [], "remote": False, "description": desc[:20000],
+            "employment": "", "salary": "", "structured": False, "company": "", "_header": "\n".join(texts)}
+
+
+def read_job_link(url):
+    """Read a job page someone found, for Add job. Returns the fields to show for editing, or ok=False + reason."""
+    url = str(url or "").strip()
+    if not re.match(r"^https?://", url, re.I):
+        return {"ok": False, "reason": "Paste the full link, starting with https://"}
+    host = (urllib.parse.urlparse(url).hostname or "").lower()
+    for dom, why in READ_BLOCKED.items():
+        if host == dom or host.endswith("." + dom):
+            return {"ok": False, "reason": why}
+    try:
+        page = http(url, as_json=False, retries=1)
+    except ReaderError as e:
+        return {"ok": False, "reason": f"Couldn't open the page ({e}). Fill in the details yourself."}
+    d = parse_job_page(page if isinstance(page, str) else str(page))
+    loc = d["locations"][0] if d.get("locations") else ""
+    remote = d.get("remote") or bool(REMOTE_RE.search(_norm(loc)))
+    out = {"ok": bool(d.get("title")), "link": url, "title": d.get("title") or "", "company": d.get("company") or "",
+           "location": tidy_loc(loc), "work_mode": "Remote" if remote else "", "description": d.get("description") or "",
+           "posted": d.get("posted") or "", "closing": d.get("closing") or "", "salary": d.get("salary") or ""}
+    if not out["ok"]:
+        out["reason"] = "Couldn't find the job details on that page. Fill them in yourself."
+    elif len(out["description"]) < 300:
+        out["reason"] = "The page didn't include the full description. Paste it in if you have it."
+    return out
 
 
 def read_sitemap(board, p, ctx, st):
