@@ -206,6 +206,15 @@ body{padding-bottom:56px}
   .actions{grid-template-columns:repeat(4,1fr);min-width:0}
   .st{text-align:center;padding:5px 4px}
 }
+dialog.addjob{border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--ink);padding:18px 20px;width:min(720px,92vw);box-shadow:var(--shadow)}
+dialog.addjob::backdrop{background:rgba(0,0,0,.35)}
+dialog.addjob .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+dialog.addjob label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+dialog.addjob input,dialog.addjob select,dialog.addjob textarea{border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:8px;padding:7px 9px;font:inherit}
+dialog.addjob textarea{min-height:180px;resize:vertical}
+dialog.addjob .full{grid-column:1/-1}
+dialog.addjob .row{display:flex;gap:8px;align-items:center}
+dialog.addjob .msg{font-size:13px;color:var(--muted);min-height:18px}
 </style>
 </head>
 <body>
@@ -215,7 +224,7 @@ body{padding-bottom:56px}
       <div class="brand"><h1>Noble Search</h1><span class="tag">A job search portal for transitioning military and veterans</span></div>
       <div class="nav" id="nav"><button data-view="jobs" class="on">Jobs</button><button data-view="search">Search</button><button data-view="profile">Profile</button><button data-view="settings">Settings</button></div>
       <div class="sync" id="sync">Loading…</div>
-      <span class="jobsonly"><button class="btn" id="btnViewed" title="Clear all NEW badges">Mark all seen</button>
+      <span class="jobsonly"><button class="btn" id="btnAddJob" title="Add a job you found yourself">Add job</button> <button class="btn" id="btnViewed" title="Clear all NEW badges">Mark all seen</button>
       <a class="btn" href="/jobs/export.csv" style="text-decoration:none">Export CSV</a></span>
     </div>
     <div class="tabs jobsonly" id="tabs"></div>
@@ -495,6 +504,49 @@ document.addEventListener('input', e => {
   }, 600);
 });
 ['q','fit','where','sort','onlyNew'].forEach(id => $('#'+id).addEventListener('input', render));
+/* ---- Add job: read a link, edit, save ---- */
+const AJ = ['title','company','location','work_mode','description','link','posted','closing','salary'];
+function addJobDialog(){
+  let d = $('#addjob');
+  if(!d){
+    d = document.createElement('dialog'); d.id='addjob'; d.className='addjob';
+    d.innerHTML = `<h3 style="margin:0 0 10px">Add a job you found</h3>
+      <div class="row"><input id="aj_link" type="url" placeholder="Paste the job's link, e.g. https://careers.example.com/job/123" style="flex:1">
+        <button class="btn" id="aj_read">Read page</button></div>
+      <div class="msg" id="aj_msg">Reading fills the fields below. Check them, or type them yourself.</div>
+      <div class="grid">
+        <label>Title<input id="aj_title"></label><label>Company<input id="aj_company"></label>
+        <label>Location<input id="aj_location" placeholder="Town, ST"></label>
+        <label>Work mode<select id="aj_work_mode"><option>On-site</option><option>Hybrid</option><option>Remote</option></select></label>
+        <label class="full">Description<textarea id="aj_description" placeholder="The job description. Paste it if the page couldn't be read."></textarea></label>
+      </div>
+      <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" id="aj_cancel">Cancel</button>
+        <button class="btn" id="aj_save" style="border-color:var(--accent)">Add job</button></div>`;
+    document.body.appendChild(d);
+    let extra = {};
+    $('#aj_cancel').onclick = () => d.close();
+    $('#aj_read').onclick = async () => {
+      const link = $('#aj_link').value.trim(); $('#aj_msg').textContent = 'Reading the page…';
+      try{
+        const r = await api('/jobs/read-link', {link});
+        if(r.title!==undefined){ ['title','company','location','description'].forEach(k=>{ if(r[k]) $('#aj_'+k).value = r[k]; });
+          if(r.work_mode) $('#aj_work_mode').value = r.work_mode; extra = {posted:r.posted||'', closing:r.closing||'', salary:r.salary||''}; }
+        $('#aj_msg').textContent = r.reason || 'Read. Check the details, then Add job.';
+      }catch(e){ $('#aj_msg').textContent = e.message; }
+    };
+    $('#aj_save').onclick = async () => {
+      const body = Object.assign({link: $('#aj_link').value.trim()}, extra);
+      ['title','company','location','work_mode','description'].forEach(k => body[k] = $('#aj_'+k).value.trim());
+      if(!body.title || !body.company){ $('#aj_msg').textContent = 'A job needs a title and a company.'; return; }
+      try{ const r = await api('/jobs/add', body); d.close(); toast(r.added ? 'Job added' : 'Job updated'); load(); }
+      catch(e){ $('#aj_msg').textContent = e.message; }
+    };
+  }
+  ['link','title','company','location','description'].forEach(k=>$('#aj_'+k).value=''); $('#aj_work_mode').value='On-site';
+  $('#aj_msg').textContent = 'Reading fills the fields below. Check them, or type them yourself.';
+  d.showModal(); $('#aj_link').focus();
+}
+$('#btnAddJob').onclick = addJobDialog;
 $('#btnViewed').onclick = async () => { await fetch('/jobs/mark-all-viewed',{method:'POST',body:'{}'}); S.jobs.forEach(j=>j.viewed=1); render(); };
 setInterval(() => { if(S.view==='jobs' && (!document.activeElement || !['TEXTAREA','INPUT','SELECT'].includes(document.activeElement.tagName))) load(); }, 10*60*1000);
 

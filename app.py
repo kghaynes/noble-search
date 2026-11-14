@@ -547,6 +547,20 @@ class Handler(BaseHTTPRequestHandler):
             except RuntimeError as e:
                 raise ValueError(str(e))
             return {"ok": True}
+        if path == "/jobs/read-link":
+            return sources.read_job_link(data.get("link"))
+        if path == "/jobs/add":
+            title, company = str(data.get("title") or "").strip(), str(data.get("company") or "").strip()
+            if not title or not company:
+                raise ValueError("A job needs a title and a company")
+            mode = data.get("work_mode") if data.get("work_mode") in ("Remote", "Hybrid", "On-site") else "On-site"
+            row = sources.make_row(None, company=company, title=title, location=str(data.get("location") or ""),
+                                   where="remote" if mode == "Remote" else "local", link=str(data.get("link") or ""),
+                                   posted=str(data.get("posted") or ""), description=str(data.get("description") or ""),
+                                   salary=str(data.get("salary") or ""), closing=str(data.get("closing") or ""),
+                                   source=sources.ADDED_SOURCE, work_mode=mode)
+            added, _updated, _keys = search.merge_rows([row], LISTING_FIELDS)
+            return {"ok": True, "key": f"{company}|{title}".strip().lower(), "added": bool(added)}
         if path == "/drafts/fetch-jd":
             with _db_lock, db() as conn:
                 row = conn.execute("SELECT link, description, linkedin_link FROM jobs WHERE job_key=?", (data.get("job_key"),)).fetchone()
