@@ -1063,10 +1063,12 @@ def work_mode_from_text(text):
             hyb = s
         if not rem and re.search(WORK_REMOTE_TEXT, s):
             rem = s
+    def cut(x):
+        return x if len(x) <= 160 else x[:160].rstrip() + "…"
     if hyb:
-        return "Hybrid", hyb[:160]
+        return "Hybrid", cut(hyb)
     if rem:
-        return "Remote", rem[:160]
+        return "Remote", cut(rem)
     return "", ""
 
 
