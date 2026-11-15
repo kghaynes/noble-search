@@ -531,7 +531,7 @@ function addJobDialog(){
         const r = await api('/jobs/read-link', {link});
         if(r.title!==undefined){ ['title','company','location','description'].forEach(k=>{ if(r[k]) $('#aj_'+k).value = r[k]; });
           if(r.work_mode) $('#aj_work_mode').value = r.work_mode; extra = {posted:r.posted||'', closing:r.closing||'', salary:r.salary||''}; }
-        $('#aj_msg').textContent = r.reason || 'Read. Check the details, then Add job.';
+        $('#aj_msg').textContent = [r.reason || 'Read. Check the details, then Add job.', r.work_mode_note].filter(Boolean).join(' ');
       }catch(e){ $('#aj_msg').textContent = e.message; }
     };
     $('#aj_save').onclick = async () => {

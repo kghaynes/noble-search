@@ -1004,6 +1004,13 @@ JOB_DESC_MARKER = r'<(?:div|section|article)\b[^>]*\b(?:class|id)="[^"]*(?:job-?
 JOB_TITLE_AT = r"^(.{3,}?)\s+at\s+([^|]{2,80})$"
 JOB_LOCATION_LINE = r"(?im)^[ \t]*(?:job[ \t]+)?location[ \t]*[: \t][ \t]*([^\n]{3,80})$"
 ADDED_SOURCE = "Added by you"
+# work mode stated in the page text (a confirmation when the location doesn't say)
+WORK_REMOTE_TEXT = (r"(?i)\b(?:(?:role|position|job|opportunity)\s+is\s+(?:considered\s+)?(?:a\s+)?(?:fully\s+|100%\s+)?remote"
+                    r"|(?:fully|100%)\s+remote|remote\s+(?:role|position|opportunity)|work\s+(?:fully\s+)?remotely)\b")
+WORK_HYBRID_TEXT = (r"(?i)\b(?:hybrid\s+(?:role|position|schedule|work|model|arrangement)"
+                    r"|(?:role|position|job)\s+is\s+(?:considered\s+)?(?:a\s+)?hybrid)\b")
+WORK_NOT_REMOTE = r"(?i)\b(?:not|no|non)[\s-]+(?:a\s+)?(?:fully\s+)?remote\b|\bremote\s+work\s+is\s+not\b"
+SENTENCE_SPLIT = r"(?<=[.!?])\s+|\n+"
 READ_BLOCKED = {
     "linkedin.com": "LinkedIn doesn't permit this app to read its job pages. Open the posting on LinkedIn, copy the details, and paste them here.",
     "indeed.com": "Indeed blocks automated reading. Open the posting, copy the details, and paste them here.",
@@ -1044,6 +1051,27 @@ def _ld_company(o):
     return html.unescape(str(org or "")).strip()
 
 
+def work_mode_from_text(text):
+    """('Hybrid' or 'Remote' or '', the sentence that says so). Hybrid wins over remote; a sentence that
+    says 'not remote' (or similar) never counts."""
+    hyb = rem = ""
+    for s in re.split(SENTENCE_SPLIT, text or ""):
+        s = s.strip()
+        if not s or re.search(WORK_NOT_REMOTE, s):
+            continue
+        if not hyb and re.search(WORK_HYBRID_TEXT, s):
+            hyb = s
+        if not rem and re.search(WORK_REMOTE_TEXT, s):
+            rem = s
+    def cut(x):
+        return x if len(x) <= 160 else x[:160].rstrip() + "…"
+    if hyb:
+        return "Hybrid", cut(hyb)
+    if rem:
+        return "Remote", cut(rem)
+    return "", ""
+
+
 def parse_job_page(page):
     """Pull title/company/date/locations/description from a job page (JSON-LD, then microdata, then plain HTML),
     then fill gaps: company from the site name or a 'Title at Company' page title, location from a 'Location' line."""
@@ -1058,7 +1086,7 @@ def parse_job_page(page):
         lm = re.search(JOB_LOCATION_LINE, d.get("_header") or (d.get("description") or "")[:4000])
         if lm:
             d["locations"] = [lm.group(1).strip()]
-    d.pop("_header", None)
+    d["work_hint"], d["work_evidence"] = work_mode_from_text((d.pop("_header", "") or "") + "\n" + (d.get("description") or ""))
     return d
 
 
@@ -1109,8 +1137,11 @@ def read_job_link(url):
     d = parse_job_page(page if isinstance(page, str) else str(page))
     loc = d["locations"][0] if d.get("locations") else ""
     remote = d.get("remote") or bool(REMOTE_RE.search(_norm(loc)))
+    mode, note = ("Remote", "") if remote else (d.get("work_hint") or "", "")
+    if not remote and mode:
+        note = f'Work mode set to {mode} because the page says: "{d.get("work_evidence")}"'
     out = {"ok": bool(d.get("title")), "link": url, "title": d.get("title") or "", "company": d.get("company") or "",
-           "location": tidy_loc(loc), "work_mode": "Remote" if remote else "", "description": d.get("description") or "",
+           "location": tidy_loc(loc), "work_mode": mode, "work_mode_note": note, "description": d.get("description") or "",
            "posted": d.get("posted") or "", "closing": d.get("closing") or "", "salary": d.get("salary") or ""}
     if not out["ok"]:
         out["reason"] = "Couldn't find the job details on that page. Fill them in yourself."
