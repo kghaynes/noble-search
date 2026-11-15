@@ -51,5 +51,26 @@ class ReadLink(unittest.TestCase):
         self.assertIn("description", r["reason"])   # short sample description: asks for a paste
 
 
+
+class WorkModeFromText(unittest.TestCase):
+    def test_phrases(self):
+        f = sources.work_mode_from_text
+        self.assertEqual(f("This role is considered remote, which means you work remotely.")[0], "Remote")
+        self.assertEqual(f("A fully remote team. Apply today.")[0], "Remote")
+        self.assertEqual(f("This is a hybrid role in Orlando. It is also remote friendly.")[0], "Hybrid")
+        self.assertEqual(f("This position is not remote.")[0], "")
+        self.assertEqual(f("No remote work. Must report on site.")[0], "")
+        self.assertEqual(f("We value remote collaboration tools.")[0], "")
+        self.assertEqual(f("")[0], "")
+        self.assertEqual(f("Great job.\nThis role is considered remote.")[1], "This role is considered remote.")
+
+    def test_read_link_sets_mode_with_note(self):
+        page = RADIANCY_PAGE.replace("<div class=\"inner\">", "<span class=\"job-remote\">This role is considered remote.</span><div class=\"inner\">")
+        with mock.patch.object(sources, "http", lambda *a, **k: page):
+            r = sources.read_job_link("https://careers.example.com/job/1")
+        self.assertEqual(r["work_mode"], "Remote")
+        self.assertIn("considered remote", r["work_mode_note"])
+
+
 if __name__ == "__main__":
     unittest.main()
