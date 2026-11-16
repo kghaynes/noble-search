@@ -102,6 +102,27 @@ def _career_text_raw():
         return ""
 
 
+# Town suggestions (spec section 14): prompt assembly and reply reading shared with the Apple app.
+TOWNS_USER = "Home location: {home}\nRadius: {radius} miles"
+SUGGEST_MAX_TOKENS = 1200
+SUGGEST_MAX_ITEMS = 40
+
+
+def towns_prompt(p):
+    """(system, user) for town suggestions; ValueError when no home town is set."""
+    home = (p.get("home_location") or p.get("city_state") or "").strip()
+    if not home:
+        raise ValueError("Enter your home town or address on the Profile page first.")
+    return TOWNS_SYSTEM, TOWNS_USER.format(home=home, radius=p.get("radius_miles") or 30)
+
+
+def suggestion_items(raw):
+    """The model's reply -> list of suggestions: the JSON object's "items", each trimmed as text,
+    empty ones dropped, at most SUGGEST_MAX_ITEMS. Raises ValueError when the reply can't be read."""
+    items = llm.parse_json(raw).get("items") or []
+    return [str(x).strip() for x in items if str(x).strip()][:SUGGEST_MAX_ITEMS]
+
+
 def _profile_text(p, inventory):
     parts = [f"Home: {p.get('home_location') or p.get('city_state') or '(not set)'}",
              f"Radius: {p.get('radius_miles') or 30} miles",
@@ -122,10 +143,7 @@ def suggest(what):
     p = ps.get_profile()
     settings = ps.get_settings(include_secret=True)
     if what == "towns":
-        home = (p.get("home_location") or p.get("city_state") or "").strip()
-        if not home:
-            raise ValueError("Enter your home town or address on the Profile page first.")
-        system, user = TOWNS_SYSTEM, f"Home location: {home}\nRadius: {p.get('radius_miles') or 30} miles"
+        system, user = towns_prompt(p)
     elif what == "agencies":
         home = (p.get("home_location") or p.get("city_state") or "").strip()
         if not home:
@@ -159,13 +177,12 @@ def suggest(what):
     else:
         raise ValueError("Unknown suggestion type")
     try:
-        raw, _prov, model = llm.complete(settings, system, user, json_mode=True, max_tokens=1200)
-        items = llm.parse_json(raw).get("items") or []
+        raw, _prov, model = llm.complete(settings, system, user, json_mode=True, max_tokens=SUGGEST_MAX_TOKENS)
+        items = suggestion_items(raw)
     except llm.LLMError as e:
         raise ValueError(f"The AI model could not answer: {e}")
     except (ValueError, AttributeError):
         raise ValueError("The AI model gave an answer that could not be read. Try again.")
-    items = [str(x).strip() for x in items if str(x).strip()][:40]
     if what == "searches":
         items = sources.split_search_lines("\n".join(items))[0]   # drop any place or "remote" the model added
     return {"ok": True, "items": items, "text": "\n".join(items),
