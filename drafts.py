@@ -325,15 +325,30 @@ Structure:
 Return Markdown only."""
 
 
-def _run_inventory(did, r, settings):
-    _, texts = _sources()
+INVENTORY_NEEDS_RESUME = "Upload at least one resume first."
+
+
+def inventory_user(texts):
+    """Spec section 16: user prompt for the inventory builder from [(name, text)] resumes."""
     if not texts:
-        raise RuntimeError("Upload at least one resume first.")
-    user = "\n\n".join(f"# RESUME: {n}\n{t}" for n, t in texts) + "\n\nWrite the career inventory now."
-    raw, provider, model = llm.complete(settings, INVENTORY_SYSTEM, user, provider=r["provider"], json_mode=False)
+        raise RuntimeError(INVENTORY_NEEDS_RESUME)
+    return "\n\n".join(f"# RESUME: {n}\n{t}" for n, t in texts) + "\n\nWrite the career inventory now."
+
+
+def inventory_reply(raw):
+    """Spec section 16: the reply as inventory text. Trimmed; a reply wrapped in a code fence loses the
+    backticks at both ends and the fence's first line."""
     text = raw.strip()
     if text.startswith("```"):
         text = text.strip("`").split("\n", 1)[-1]
+    return text
+
+
+def _run_inventory(did, r, settings):
+    _, texts = _sources()
+    user = inventory_user(texts)
+    raw, provider, model = llm.complete(settings, INVENTORY_SYSTEM, user, provider=r["provider"], json_mode=False)
+    text = inventory_reply(raw)
     _update(did, status="done", finished=_now(), provider=provider, model=model, text=text)
 
 
