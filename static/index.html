@@ -612,10 +612,14 @@ function tplOptions(key){
   const rs = S.resumeList || [];
   if(rs.length < 2) return '';
   const def = (rs.find(r => r.is_template) || {}).name || '';
+  const j = S.jobs.find(x => x.job_key === key) || {};
+  const rec = rs.some(r => r.name === j.best_resume) ? j.best_resume : '';
+  if(S.tpl[key] === undefined && rec && rec !== def) S.tpl[key] = rec;   // start from the AI's recommendation
   const sel = S.tpl[key] || '';
+  const recHint = rec ? `<span class="hint" title="${esc(j.best_resume_why||'')}">Recommended: ${esc(rec)}${j.best_resume_why?` (${esc(j.best_resume_why)})`:''}</span>` : '';
   return `<label class="hint" title="The resume this draft follows for layout, section names and wording. Your default is set in Profile → Resumes.">Follow
     <select class="inp" data-tpl="${esc(key)}"><option value="">${esc(def||'default')} (default)</option>${
-      rs.filter(r => r.name !== def).map(r => `<option value="${esc(r.name)}" ${sel===r.name?'selected':''}>${esc(r.name)}</option>`).join('')}</select></label>`;
+      rs.filter(r => r.name !== def).map(r => `<option value="${esc(r.name)}" ${sel===r.name?'selected':''}>${esc(r.name)}</option>`).join('')}</select></label> ${recHint}`;
 }
 function panelHTML(key){
   const ds = S.drafts[key];

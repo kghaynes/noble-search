@@ -39,6 +39,15 @@ Return ONLY a JSON object:
 """
 
 
+# Base-resume recommendation (spec fit.json): with two or more base resumes, the fit prompt lists them
+# and asks which one is the best starting point for the job. Same text for every job, so it caches.
+BASE_RESUMES_HEADER = "# BASE RESUMES TO CHOOSE FROM"
+BASE_RESUMES_ASK = ('Also include in the JSON "best_resume": the exact name of the one base resume below that is the best '
+                    'starting point for a tailored resume for this job, and "best_resume_why": why, in at most 15 words.')
+BASE_RESUME_PREVIEW_CHARS = 400
+BEST_RESUME_WHY_MAX = 150
+
+
 def _now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -48,7 +57,7 @@ def init(db_fn, db_lock):
     _db = (db_fn, db_lock)
     with db_lock, db_fn() as conn:
         have = {r[1] for r in conn.execute("PRAGMA table_info(jobs)")}
-        for col in ("fit_by", "fit_at"):
+        for col in ("fit_by", "fit_at", "best_resume", "best_resume_why"):
             if col not in have:
                 conn.execute(f"ALTER TABLE jobs ADD COLUMN {col} TEXT DEFAULT ''")
 
@@ -76,6 +85,10 @@ def system_prompt(profile, inventory, resume_texts):
     else:
         for name, text in resume_texts[:2]:
             parts += ["", f"# RESUME: {name}", text.strip()[:15000]]
+    if len(resume_texts) > 1:
+        parts += ["", BASE_RESUMES_HEADER, BASE_RESUMES_ASK]
+        for name, text in resume_texts:
+            parts.append(f"- {name}: " + " ".join(text.split())[:BASE_RESUME_PREVIEW_CHARS])
     return "\n".join(parts)
 
 
@@ -93,7 +106,28 @@ def job_prompt(job):
         "", "Return the JSON now."])
 
 
-def rate_job(settings, provider, system, job):
+def parse_reply(raw, job, resume_names=()):
+    """The model's fit reply -> {fit, lane, fit_reason, best_resume, best_resume_why}. Raises llm.LLMError when
+    the reply can't be read or has no valid fit. best_resume is kept only when it names one of resume_names
+    (any case; the stored name is the real one)."""
+    d = llm.parse_json(raw)
+    fit = str(d.get("fit") or "").strip().title()
+    fit = {"Medium": "Med", "Moderate": "Med", "Strong": "High", "Weak": "Low"}.get(fit, fit)
+    if fit not in ("High", "Med", "Low"):
+        raise llm.LLMError(f"Model returned fit={d.get('fit')!r}")
+    reason = " ".join(str(d.get("reason") or "").split())
+    if str(d.get("meets_basic_quals") or "").lower() == "no" and "basic qual" not in reason.lower():
+        reason += " (Does not meet a posted basic qualification.)"
+    if not (job.get("description") or "").strip() and "title" not in reason.lower():
+        reason += " (Rated from title only.)"
+    pick = str(d.get("best_resume") or "").strip().lower()
+    best = next((n for n in resume_names if n.lower() == pick), "") if len(resume_names) > 1 else ""
+    why = " ".join(str(d.get("best_resume_why") or "").split())[:BEST_RESUME_WHY_MAX] if best else ""
+    return {"fit": fit, "lane": str(d.get("lane") or "").strip()[:40], "fit_reason": reason[:600],
+            "best_resume": best, "best_resume_why": why}
+
+
+def rate_job(settings, provider, system, job, resume_names=()):
     last = None
     for attempt in range(3):
         # a long reason can run past the reply limit and cut the JSON off: allow more room, and be blunter, on retries
@@ -107,23 +141,12 @@ def rate_job(settings, provider, system, job):
             last = e
             continue
         try:
-            d = llm.parse_json(raw)
+            res = parse_reply(raw, job, resume_names)
         except llm.LLMError as e:
             last = e
             continue
-        fit = str(d.get("fit") or "").strip().title()
-        fit = {"Medium": "Med", "Moderate": "Med", "Strong": "High", "Weak": "Low"}.get(fit, fit)
-        if fit not in ("High", "Med", "Low"):
-            last = llm.LLMError(f"Model returned fit={d.get('fit')!r}")
-            continue
-        reason = " ".join(str(d.get("reason") or "").split())
-        if str(d.get("meets_basic_quals") or "").lower() == "no" and "basic qual" not in reason.lower():
-            reason += " (Does not meet a posted basic qualification.)"
-        if not (job.get("description") or "").strip() and "title" not in reason.lower():
-            reason += " (Rated from title only.)"
         label = "Claude" if prov == "anthropic" else "Local"
-        return {"fit": fit, "lane": str(d.get("lane") or "").strip()[:40], "fit_reason": reason[:600],
-                "fit_by": f"{label} · {model}"}
+        return {**res, "fit_by": f"{label} · {model}"}
     raise last or llm.LLMError("No rating")
 
 
@@ -162,7 +185,7 @@ def run(keys=None, provider=None, force=False):
                 continue
             _state["current"] = f"{job['company']}: {job['title']}"[:120]
             try:
-                res = rate_job(settings, provider, system, job)
+                res = rate_job(settings, provider, system, job, [n for n, _ in texts])
             except Exception as e:  # noqa: BLE001 — keep going; one bad job must not stop the run
                 _state["errors"] += 1
                 _state["last_error"] = str(e)[:300]
@@ -171,9 +194,10 @@ def run(keys=None, provider=None, force=False):
                     break  # the model is down; no point trying the rest
                 continue
             with lock, db_fn() as conn:
-                conn.execute("""UPDATE jobs SET fit=?, fit_reason=?, fit_by=?, fit_at=?,
+                conn.execute("""UPDATE jobs SET fit=?, fit_reason=?, fit_by=?, fit_at=?, best_resume=?, best_resume_why=?,
                                 lane=CASE WHEN COALESCE(lane,'')='' OR ? THEN ? ELSE lane END WHERE job_key=?""",
-                             (res["fit"], res["fit_reason"], res["fit_by"], _now(), 1 if force else 0, res["lane"], key))
+                             (res["fit"], res["fit_reason"], res["fit_by"], _now(), res["best_resume"],
+                              res["best_resume_why"], 1 if force else 0, res["lane"], key))
             _state["done"] += 1
     finally:
         _state.update(running=False, current="")
