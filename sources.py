@@ -166,7 +166,7 @@ assistant
 coordinator
 technician
 art director|creative director|medical director|nursing|pharmacy
-physician|medical officer|\bnurse\b|dentist|pharmacist|veterinar|psychologist|chaplain|attorney|\blaw clerk
+physician|medical officer|\\bnurse\\b|dentist|pharmacist|veterinar|psychologist|chaplain|attorney|\\blaw clerk
 director of (sales|business development) - (retail|consumer)"""
 
 DEFAULT_PLACES = ""  # filled per user ("Suggest towns" on the Search page, or typed in)

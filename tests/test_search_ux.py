@@ -93,6 +93,14 @@ class Matching(unittest.TestCase):
         self.assertTrue(ex["ok"]); self.assertEqual((ex["seniority"], ex["field"]), ("director", "program"))
         self.assertFalse(c.explain_title("Director of IT (internal candidates only)")["ok"])
 
+    def test_default_exclude_nurse_and_law_clerk(self):
+        # the default once held backspace characters instead of \b, so these were never skipped
+        self.assertNotIn("\b", sources.DEFAULT_TITLE_EXCLUDE)
+        c = sources.Context({"title_include": "*", "title_exclude": sources.DEFAULT_TITLE_EXCLUDE}, {})
+        self.assertIn("nurse", c.explain_title("Nurse Manager")["skip"])
+        self.assertIn("law clerk", c.explain_title("Law Clerk")["skip"])
+        self.assertFalse(c.explain_title("Nursery Operations Director")["skip"])   # 'nurse' needs a whole word
+
 
 class Plan(unittest.TestCase):
     def test_split_old_lines(self):
