@@ -326,6 +326,7 @@ Return Markdown only."""
 
 
 INVENTORY_NEEDS_RESUME = "Upload at least one resume first."
+INVENTORY_MAX_TOKENS = 16000   # long Markdown, and the draft model may think first (thinking counts toward this)
 
 
 def inventory_user(texts):
@@ -347,7 +348,8 @@ def inventory_reply(raw):
 def _run_inventory(did, r, settings):
     _, texts = _sources()
     user = inventory_user(texts)
-    raw, provider, model = llm.complete(settings, INVENTORY_SYSTEM, user, provider=r["provider"], json_mode=False)
+    raw, provider, model = llm.complete(settings, INVENTORY_SYSTEM, user, provider=r["provider"], json_mode=False,
+                                         max_tokens=INVENTORY_MAX_TOKENS)
     text = inventory_reply(raw)
     _update(did, status="done", finished=_now(), provider=provider, model=model, text=text)
 
