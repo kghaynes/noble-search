@@ -82,22 +82,32 @@ def _career_text():
     return privacy.scrub_clearance_details(text) if ps.get_settings().get("redact_pii", True) else text
 
 
-def _career_text_raw():
-    """The person's career for suggestions: the full career inventory, or — if there is none yet —
-    the text of their uploaded resumes (template resume first)."""
-    inv = ps.get_inventory().strip()
+def career_text(inventory, resumes):
+    """Spec section 15: the person's career for suggestions. The inventory (cut at INVENTORY_MAX, with a note
+    when cut), or with no inventory the first two resumes [(name, text)] as 'Resume (name):' blocks, cut together
+    at RESUME_MAX. '' when there's neither."""
+    inv = str(inventory or "").strip()
     if inv:
         return "Career inventory:\n" + inv[:INVENTORY_MAX] + ("\n[…inventory shortened]" if len(inv) > INVENTORY_MAX else "")
+    return "\n\n".join(f"Resume ({n}):\n" + str(t) for n, t in list(resumes or [])[:2])[:RESUME_MAX]
+
+
+def _career_text_raw():
+    """The person's career for suggestions (career_text): the inventory, or the uploaded resumes'
+    text (template resume first)."""
+    inv = ps.get_inventory()
+    if inv.strip():
+        return career_text(inv, [])
     try:
         import resume   # imported here so suggest works even if python-docx is unavailable
         rs = sorted(ps.list_resumes(), key=lambda r: not r.get("is_template"))
         texts = []
         for r in rs[:2]:
             try:
-                texts.append(f"Resume ({r['name']}):\n" + resume.extract_docx_text(ps.resume_path(r["name"])))
+                texts.append((r["name"], resume.extract_docx_text(ps.resume_path(r["name"]))))
             except Exception:  # noqa: BLE001 — an unreadable file just isn't used
                 continue
-        return "\n\n".join(texts)[:RESUME_MAX]
+        return career_text("", texts)
     except Exception:  # noqa: BLE001
         return ""
 
@@ -121,6 +131,50 @@ def suggestion_items(raw):
     empty ones dropped, at most SUGGEST_MAX_ITEMS. Raises ValueError when the reply can't be read."""
     items = llm.parse_json(raw).get("items") or []
     return [str(x).strip() for x in items if str(x).strip()][:SUGGEST_MAX_ITEMS]
+
+
+TITLES_MAX_TOKENS = 1500
+NEED_CAREER = {
+    "searches": "Fill in target levels and fields, your military background, or upload a resume / build your career inventory on the Profile page first.",
+    "titles": "Fill in your military background, target levels and fields, or upload a resume / build your career inventory on the Profile page first.",
+}
+TITLE_LIMITS = {"translations": 8, "example_titles": 15, "levels": 14, "fields": 20, "skip": 12}
+
+
+def searches_prompt(p, career):
+    """(system, user) for search suggestions (spec section 15); ValueError when there's nothing to go on."""
+    if not (p.get("levels") or p.get("lanes") or ps.military_text(p) or career):
+        raise ValueError(NEED_CAREER["searches"])
+    return SEARCHES_SYSTEM, _profile_text(p, career)
+
+
+def titles_prompt(p, career):
+    """(system, user) for title suggestions (spec section 15); ValueError when there's nothing to go on."""
+    if not (ps.military_text(p) or p.get("levels") or p.get("lanes") or career):
+        raise ValueError(NEED_CAREER["titles"])
+    return TITLES_SYSTEM, _profile_text(p, career)
+
+
+def searches_items(raw):
+    """Reply -> search phrases: suggestion_items, then any place or 'remote' the model added is taken off and
+    lines naming another place are dropped (sources.split_search_lines)."""
+    return sources.split_search_lines("\n".join(suggestion_items(raw)))[0]
+
+
+def titles_reply(raw):
+    """Reply -> {translations, example_titles, levels, fields, skip}. Translations and example titles are
+    trimmed text; levels, fields and skip are plain lowercase terms (_clean_terms). ValueError when unreadable."""
+    try:
+        d = llm.parse_json(raw)
+    except llm.LLMError as e:
+        raise ValueError(str(e))
+    if not isinstance(d, dict):
+        raise ValueError("not a JSON object")
+    text = lambda k: [str(x).strip() for x in d.get(k) or [] if str(x).strip()][:TITLE_LIMITS[k]]
+    return {"translations": text("translations"), "example_titles": text("example_titles"),
+            "levels": _clean_terms(d.get("levels"), TITLE_LIMITS["levels"]),
+            "fields": _clean_terms(d.get("fields"), TITLE_LIMITS["fields"]),
+            "skip": _clean_terms(d.get("skip"), TITLE_LIMITS["skip"])}
 
 
 def _profile_text(p, inventory):
@@ -150,40 +204,28 @@ def suggest(what):
             raise ValueError("Enter your home town or address on the Profile page first.")
         system, user = AGENCIES_SYSTEM, f"Home location: {home}\nRadius: {p.get('radius_miles') or 30} miles"
     elif what == "titles":
-        career = _career_text()
-        if not (ps.military_text(p) or p.get("levels") or p.get("lanes") or career):
-            raise ValueError("Fill in your military background, target levels and fields, or upload a resume / build your career inventory on the Profile page first.")
+        system, user = titles_prompt(p, _career_text())
         try:
-            raw, _prov, model = llm.complete(settings, TITLES_SYSTEM, _profile_text(p, career),
-                                             json_mode=True, max_tokens=1500)
-            d = llm.parse_json(raw)
+            raw, _prov, model = llm.complete(settings, system, user, json_mode=True, max_tokens=TITLES_MAX_TOKENS)
         except llm.LLMError as e:
             raise ValueError(f"The AI model could not answer: {e}")
+        try:
+            res = {"ok": True, **titles_reply(raw)}
         except (ValueError, AttributeError):
             raise ValueError("The AI model gave an answer that could not be read. Try again.")
-        res = {"ok": True,
-               "translations": [str(x).strip() for x in d.get("translations") or [] if str(x).strip()][:8],
-               "example_titles": [str(x).strip() for x in d.get("example_titles") or [] if str(x).strip()][:15],
-               "levels": _clean_terms(d.get("levels"), 14), "fields": _clean_terms(d.get("fields"), 20),
-               "skip": _clean_terms(d.get("skip"), 12)}
         res["detail"] = (f"Suggested by {model}. Tick what you want, then add it to your lists. "
                          "You can still edit every list yourself.")
         return res
     elif what == "searches":
-        career = _career_text()
-        if not (p.get("levels") or p.get("lanes") or ps.military_text(p) or career):
-            raise ValueError("Fill in target levels and fields, your military background, or upload a resume / build your career inventory on the Profile page first.")
-        system, user = SEARCHES_SYSTEM, _profile_text(p, career)
+        system, user = searches_prompt(p, _career_text())
     else:
         raise ValueError("Unknown suggestion type")
     try:
         raw, _prov, model = llm.complete(settings, system, user, json_mode=True, max_tokens=SUGGEST_MAX_TOKENS)
-        items = suggestion_items(raw)
+        items = searches_items(raw) if what == "searches" else suggestion_items(raw)
     except llm.LLMError as e:
         raise ValueError(f"The AI model could not answer: {e}")
     except (ValueError, AttributeError):
         raise ValueError("The AI model gave an answer that could not be read. Try again.")
-    if what == "searches":
-        items = sources.split_search_lines("\n".join(items))[0]   # drop any place or "remote" the model added
     return {"ok": True, "items": items, "text": "\n".join(items),
             "detail": f"{len(items)} suggestions from {model}. Review them, then click Save search settings."}

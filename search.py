@@ -106,6 +106,8 @@ def get_config(include_secret=False):
     if not any(k in data for k in TITLE_KEYS) and "title_include" in data:
         cfg.update(sources.migrate_title_include(data["title_include"]))   # saved before the seniority switch
     cfg["title_include"] = sources.effective_include(cfg)
+    # settings saved with the old default, whose "\\bnurse\\b" was read as backspace characters (never matched)
+    cfg["title_exclude"] = str(cfg.get("title_exclude") or "").replace("\b", "\\b")
     if "jsearch_what" not in data and str(data.get("jsearch_queries") or "").strip():
         # settings from before "jobs to look for": split old search lines into phrases + exact searches
         phrases, exact = sources.split_search_lines(data["jsearch_queries"])
