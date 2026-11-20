@@ -8,7 +8,7 @@
 # draft, already closed, or can't merge cleanly, then merges and deletes the branch.
 set -euo pipefail
 
-DEFAULT_METHOD="squash"   # this repo's merge style
+DEFAULT_METHOD="merge"    # merge commits here: the spec manifest cites this repo's commit IDs
 WAIT_FOR_CHECKS_SECONDS=300   # how long to wait for checks to appear on a new PR
 
 die() { echo "merge-pr: $*" >&2; exit 1; }
