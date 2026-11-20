@@ -1047,24 +1047,39 @@ def _blocked(text):
     return "<urlset" not in head and "<sitemapindex" not in head and "JobPosting" not in text and bool(BOT_CHECK.search(head))
 
 
-def _sitemap_urls(url, depth=0):
-    xml = http(url, as_json=False, timeout=60)
-    if _blocked(xml):
-        raise ReaderError("Site blocks automated readers with a bot check. Set this employer to Off; "
-                          "job-board search covers it.")
+def sitemap_children(xml):
+    """A sitemap index -> the child sitemaps to read (job-looking ones, else the first five; at most six),
+    or None when the document isn't an index."""
+    if "<sitemapindex" not in xml[:2000]:
+        return None
+    subs = re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", xml)
+    jobby = [x for x in subs if re.search(r"job|posting|career|position", x, re.I)] or subs[:5]
+    return [html.unescape(x) for x in jobby[:6]]
+
+
+def sitemap_entries(xml):
+    """A sitemap's <url> entries -> [(link, lastmod as a date or "")]."""
     out = []
-    if "<sitemapindex" in xml[:2000] and depth < 2:
-        subs = re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", xml)
-        jobby = [s for s in subs if re.search(r"job|posting|career|position", s, re.I)] or subs[:5]
-        for s in jobby[:6]:
-            out += _sitemap_urls(html.unescape(s), depth + 1)
-        return out
     for block in re.findall(r"<url>(.*?)</url>", xml, re.S):
         loc = re.search(r"<loc>\s*([^<\s]+)\s*</loc>", block)
         mod = re.search(r"<lastmod>\s*([^<\s]+)\s*</lastmod>", block)
         if loc:
             out.append((html.unescape(loc.group(1)), parse_date(mod.group(1)) if mod else ""))
     return out
+
+
+def _sitemap_urls(url, depth=0):
+    xml = http(url, as_json=False, timeout=60)
+    if _blocked(xml):
+        raise ReaderError("Site blocks automated readers with a bot check. Set this employer to Off; "
+                          "job-board search covers it.")
+    subs = sitemap_children(xml) if depth < 2 else None
+    if subs is not None:
+        out = []
+        for x in subs:
+            out += _sitemap_urls(x, depth + 1)
+        return out
+    return sitemap_entries(xml)
 
 
 def _jsonld_posting(page):
@@ -1256,51 +1271,74 @@ def read_job_link(url):
     return out
 
 
-def read_sitemap(board, p, ctx, st):
-    urls = _sitemap_urls(p["sitemap"])
-    jobs = [(u, m) for u, m in urls if re.search(r"/job(s|detail)?/", u, re.I) and not re.search(r"applied", u, re.I)]
-    st["scanned"] = len(jobs)
-    if not jobs:
-        raise ReaderError("No job pages listed in the site map")
+def sitemap_jobs(urls):
+    """Sitemap entries -> the job pages among them (a /job/, /jobs/ or /jobdetail/ path, never 'applied')."""
+    return [(u, m) for u, m in urls if re.search(r"/job(s|detail)?/", u, re.I) and not re.search(r"applied", u, re.I)]
+
+
+def sitemap_candidates(jobs, ctx):
+    """Job pages -> the ones worth opening, in order: title rules on the link's path; skipped when the lastmod
+    dates look real (more than three different ones in the first 50) and this one is too old; pages whose path
+    names a home-area town, "remote", "united states" or "telework" first, otherwise in sitemap order."""
     hint_words = [n for n, _, _ in ctx.places] + ["remote", "united states", "telework"]
+    real_dates = len({m for _, m in jobs[:50]}) > 3
     cands = []
     for u, mod in jobs:
         slug = _norm(urllib.parse.urlparse(u).path)
         if not ctx.title_ok(slug):
             continue
-        if mod and not ctx.age_ok(mod) and len({m for _, m in jobs[:50]}) > 3:
-            continue  # lastmod looks real (not all one value) and is old
+        if mod and not ctx.age_ok(mod) and real_dates:
+            continue
         near = any(re.search(rf"\b{re.escape(h)}\b", slug) for h in hint_words if h)
         cands.append((0 if near else 1, u, mod))
     cands.sort()
+    return [(u, mod) for _, u, mod in cands]
+
+
+def sitemap_listing(page, u, mod, name, ctx):
+    """One job page from a sitemap -> (row or None, stage)."""
+    d = parse_job_page(page)
+    title = d["title"] or _norm(urllib.parse.urlparse(u).path.split("/")[-2]).title()
+    if not ctx.title_ok(title):
+        return None, "title"
+    if d["structured"]:
+        w = ctx.where(" | ".join(d["locations"]), remote_flag=d["remote"]) if (d["locations"] or d["remote"]) \
+            else ctx.where(_norm(urllib.parse.urlparse(u).path), loose_remote=False)
+    else:
+        w = ctx.where(d["description"][:6000], loose_remote=False) or \
+            (ctx.where(title) if REMOTE_RE.search(title.lower()) else None)
+    if not w:
+        return None, "place"
+    posted = d["posted"] or mod
+    if not ctx.age_ok(posted):
+        return None, "age"
+    loc = pick_location(ctx, d["locations"]) if d["locations"] else (
+        next((pl for n, _, pl in ctx.places if re.search(rf"\b{re.escape(n)}\b", _norm(d["description"][:6000]))), "")
+        if w == "local" else "Remote (US)")
+    return make_row(ctx, company=name, title=title, location=tidy_loc(loc), where=w, link=u,
+                    posted=d["posted"], closing=d["closing"], description=d["description"], salary=d["salary"],
+                    employment_type=employment(d["employment"]), source=f"{name} careers"), "kept"
+
+
+SITEMAP_DETAIL_CAP = 120
+
+
+def read_sitemap(board, p, ctx, st):
+    jobs = sitemap_jobs(_sitemap_urls(p["sitemap"]))
+    st["scanned"] = len(jobs)
+    if not jobs:
+        raise ReaderError("No job pages listed in the site map")
+    cands = sitemap_candidates(jobs, ctx)
     st["title_matches"] = len(cands)
-    for _, u, mod in cands[: max(ctx.detail_cap, 120)]:
+    for u, mod in cands[: max(ctx.detail_cap, SITEMAP_DETAIL_CAP)]:
         try:
             page = http(u, as_json=False)
         except ReaderError as e:
             st["errors"].append(str(e))
             continue
-        d = parse_job_page(page)
-        title = d["title"] or _norm(urllib.parse.urlparse(u).path.split("/")[-2]).title()
-        if not ctx.title_ok(title):
-            continue
-        if d["structured"]:
-            w = ctx.where(" | ".join(d["locations"]), remote_flag=d["remote"]) if (d["locations"] or d["remote"]) \
-                else ctx.where(_norm(urllib.parse.urlparse(u).path), loose_remote=False)
-        else:
-            w = ctx.where(d["description"][:6000], loose_remote=False) or \
-                (ctx.where(title) if REMOTE_RE.search(title.lower()) else None)
-        if not w:
-            continue
-        posted = d["posted"] or mod
-        if not ctx.age_ok(posted):
-            continue
-        loc = pick_location(ctx, d["locations"]) if d["locations"] else (
-            next((pl for n, _, pl in ctx.places if re.search(rf"\b{re.escape(n)}\b", _norm(d["description"][:6000]))), "")
-            if w == "local" else "Remote (US)")
-        yield make_row(ctx, company=board["name"], title=title, location=tidy_loc(loc), where=w, link=u,
-                       posted=d["posted"], closing=d["closing"], description=d["description"], salary=d["salary"],
-                       employment_type=employment(d["employment"]), source=f"{board['name']} careers")
+        row, _stage = sitemap_listing(page, u, mod, board["name"], ctx)
+        if row:
+            yield row
 
 
 READERS = {
