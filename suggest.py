@@ -126,6 +126,17 @@ def towns_prompt(p):
     return TOWNS_SYSTEM, TOWNS_USER.format(home=home, radius=p.get("radius_miles") or 30)
 
 
+AGENCIES_USER = TOWNS_USER
+
+
+def agencies_prompt(p):
+    """(system, user) for federal agency suggestions (spec section 17); ValueError when no home town is set."""
+    home = (p.get("home_location") or p.get("city_state") or "").strip()
+    if not home:
+        raise ValueError("Enter your home town or address on the Profile page first.")
+    return AGENCIES_SYSTEM, AGENCIES_USER.format(home=home, radius=p.get("radius_miles") or 30)
+
+
 def suggestion_items(raw):
     """The model's reply -> list of suggestions: the JSON object's "items", each trimmed as text,
     empty ones dropped, at most SUGGEST_MAX_ITEMS. Raises ValueError when the reply can't be read."""
@@ -199,10 +210,7 @@ def suggest(what):
     if what == "towns":
         system, user = towns_prompt(p)
     elif what == "agencies":
-        home = (p.get("home_location") or p.get("city_state") or "").strip()
-        if not home:
-            raise ValueError("Enter your home town or address on the Profile page first.")
-        system, user = AGENCIES_SYSTEM, f"Home location: {home}\nRadius: {p.get('radius_miles') or 30} miles"
+        system, user = agencies_prompt(p)
     elif what == "titles":
         system, user = titles_prompt(p, _career_text())
         try:

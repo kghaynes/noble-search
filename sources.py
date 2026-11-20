@@ -1270,6 +1270,112 @@ def agency_match(d, names):
     return False
 
 
+USAJOBS_DEFAULT_MIN_GRADE = 14
+USAJOBS_MAX_PAGES = 10
+USAJOBS_PAGE_SIZE = 500
+USAJOBS_MAX_DAYS = 60
+USAJOBS_SENIOR_PLANS = ("ES", "SL", "ST", "EX")
+USAJOBS_GRADED_PLANS = ("GS", "GG", "GM")
+NOTE_NO_HOME = "Near-home search skipped: add your home town (e.g. \"Springfield, IL\") on the Profile page."
+NOTE_NO_AGENCIES = "Nationwide search skipped: list the agencies near you on the Search page."
+
+
+def usajobs_queries(cfg, ctx):
+    """Spec section 17: the USAJOBS searches for one run -> (queries, note). Each query is a dict of USAJOBS
+    search parameters; keys starting with "_" are flags for reading the results, not parameters."""
+    min_grade = int(cfg.get("usajobs_min_grade") or USAJOBS_DEFAULT_MIN_GRADE)
+    city, _, stab = ctx.home_city.partition(",")
+    queries, notes = [], []
+    if ctx.allow_local and city.strip() and stab.strip():
+        queries.append({"LocationName": f"{city.strip()}, {STATES.get(stab.strip().upper(), stab.strip()).title()}",
+                        "Radius": ctx.radius})
+    elif ctx.allow_local:
+        notes.append(NOTE_NO_HOME)
+    if ctx.allow_remote:
+        queries.append({"RemoteIndicator": "True"})
+    # Optional: senior jobs anywhere in the US, kept only when the posting itself is nationwide (not one named
+    # city) -- e.g. SES jobs "relocate to an assigned NASA location".
+    mode = cfg.get("usajobs_nationwide") or "off"
+    if mode == "agencies" and not agency_lines(cfg):
+        notes.append(NOTE_NO_AGENCIES)
+    elif mode in ("agencies", "all"):
+        queries.append({"PayGradeLow": f"{max(1, min_grade - 1):02d}", "_nationwide": True})
+        queries.append({"JobGradeCode": "ES;SL;ST", "_nationwide": True})   # SES-type jobs carry grade "00"
+    return queries, " ".join(notes)
+
+
+def usajobs_params(q, max_age_days, page):
+    """The query string parameters for one page of one query."""
+    return {**{k: v for k, v in q.items() if not k.startswith("_")}, "DatePosted": min(max_age_days, USAJOBS_MAX_DAYS),
+            "ResultsPerPage": USAJOBS_PAGE_SIZE, "Page": page, "WhoMayApply": "public"}
+
+
+def usajobs_listing(d, q, cfg, ctx):
+    """Spec section 17: one USAJOBS MatchedObjectDescriptor -> (fields, stage). stage is "title" (dropped by the
+    grade or title check), "place" (dropped by location) or "kept"; fields is None unless kept. Keys: title,
+    company, location, where (local | remote | nationwide), link, posted, closing, description, salary,
+    clearance, employment_type, work_mode."""
+    min_grade = int(cfg.get("usajobs_min_grade") or USAJOBS_DEFAULT_MIN_GRADE)
+    mode = cfg.get("usajobs_nationwide") or "off"
+    det = (d.get("UserArea") or {}).get("Details") or {}
+    plan = ((d.get("JobGrade") or [{}])[0] or {}).get("Code", "")
+    try:
+        low = int(det.get("LowGrade") or 0)
+    except ValueError:
+        low = 0
+    title = d.get("PositionTitle") or ""
+    senior = plan in USAJOBS_SENIOR_PLANS or (plan in USAJOBS_GRADED_PLANS and low >= min_grade)
+    # Federal titles rarely say "Director", so a senior grade can stand in for a title match,
+    # but the "skip titles" list (and internal-only) still applies to everything.
+    if senior:
+        if not ctx.title_allowed(title):
+            return None, "title"
+    elif not (ctx.title_ok(title) and low >= min_grade - 1):
+        return None, "title"
+    remote = str(det.get("RemoteIndicator")).lower() == "true" or "RemoteIndicator" in q
+    locs = [l.get("LocationName", "") for l in d.get("PositionLocation") or []] or [d.get("PositionLocationDisplay", "")]
+    w = "remote" if remote and ctx.allow_remote else ctx.where(" | ".join(locs), loose_remote=False)
+    if "LocationName" in q and not w:
+        w = "local"  # USAJOBS already applied the radius
+    if not w and q.get("_nationwide") and is_nationwide(locs) and (mode == "all" or agency_match(d, agency_lines(cfg))):
+        w = "nationwide"
+    if not w:
+        return None, "place"
+    pay = (d.get("PositionRemuneration") or [{}])[0] or {}
+    sal = ""
+    if pay.get("MinimumRange"):
+        try:
+            sal = f"${float(pay['MinimumRange']):,.0f}–${float(pay['MaximumRange']):,.0f}"
+        except (TypeError, ValueError):
+            sal = ""
+    duties = det.get("MajorDuties") or []
+    where_txt = d.get("PositionLocationDisplay") or "; ".join(locs[:6])
+    desc = "\n\n".join(filter(None, [
+        f"Location: {where_txt} — nationwide posting; the person selected must relocate to an assigned duty station."
+        if w == "nationwide" else "",
+        det.get("JobSummary") or "",
+        "\n".join("• " + x for x in duties if isinstance(x, str)),
+        d.get("QualificationSummary") or ""]))
+    org = d.get("OrganizationName") or d.get("DepartmentName") or "Federal"
+    grade = f"{plan}-{det.get('LowGrade')}" + (f"/{det.get('HighGrade')}" if det.get("HighGrade") and det.get("HighGrade") != det.get("LowGrade") else "") if plan else ""
+    return {
+        "title": f"{d.get('PositionTitle', '')}{f' ({grade})' if grade else ''}",
+        "company": org,
+        "location": {"local": pick_location(ctx, locs), "remote": "Remote (US)"}.get(
+            w, f"Nationwide — relocation required ({where_txt[:80]})"),
+        "where": w,
+        "link": d.get("PositionURI") or "",
+        "posted": parse_date(d.get("PublicationStartDate")),
+        "closing": parse_date(d.get("ApplicationCloseDate")),
+        "description": desc,
+        "salary": sal,
+        "clearance": det.get("SecurityClearance") if det.get("SecurityClearance") not in (None, "", "Not Required", "Not Applicable") else "",
+        "employment_type": "Federal (" + (((d.get("PositionSchedule") or [{}])[0] or {}).get("Name") or "Full-time") + ")",
+        "work_mode": "Remote" if w == "remote" else "On-site — relocation required" if w == "nationwide" else (
+            "Telework eligible" if str(det.get("TeleworkEligible")).lower() == "true" else "On-site"),
+    }, "kept"
+
+
 def read_usajobs(cfg, ctx):
     key, email = (cfg.get("usajobs_api_key") or "").strip(), (cfg.get("usajobs_email") or "").strip()
     st = {"name": "USAJOBS", "type": "usajobs", "scanned": 0, "title_matches": 0, "kept": 0, "errors": [],
@@ -1278,34 +1384,17 @@ def read_usajobs(cfg, ctx):
         st["skipped"] = "Add a free USAJOBS API key and your email on the Search page."
         return [], st
     t0 = time.time()
-    min_grade = int(cfg.get("usajobs_min_grade") or 14)
-    city, _, stab = ctx.home_city.partition(",")
-    loc_name = f"{city.strip()}, {STATES.get(stab.strip().upper(), stab.strip()).title()}"
-    queries = []
-    if ctx.allow_local and city.strip() and stab.strip():
-        queries.append({"LocationName": loc_name, "Radius": ctx.radius})
-    elif ctx.allow_local:
-        st["note"] = "Near-home search skipped: add your home town (e.g. \"Springfield, IL\") on the Profile page."
-    if ctx.allow_remote:
-        queries.append({"RemoteIndicator": "True"})
-    # Optional third search: senior jobs anywhere in the US, kept only when the posting itself is
-    # nationwide (not one named city) — e.g. SES jobs "relocate to an assigned NASA location".
-    mode = cfg.get("usajobs_nationwide") or "off"
-    agencies = agency_lines(cfg)
+    queries, note = usajobs_queries(cfg, ctx)
+    if note:
+        st["note"] = note
     st["nationwide"] = 0
-    if mode == "agencies" and not agencies:
-        st["note"] = ((st.get("note") or "") + " Nationwide search skipped: list the agencies near you on the Search page.").strip()
-    elif mode in ("agencies", "all"):
-        queries.append({"PayGradeLow": f"{max(1, min_grade - 1):02d}", "_nationwide": True})
-        queries.append({"JobGradeCode": "ES;SL;ST", "_nationwide": True})   # SES-type jobs carry grade "00"
     hdr = {"Host": "data.usajobs.gov", "User-Agent": email, "Authorization-Key": key}
     seen, rows = set(), []
     try:
         for q in queries:
             page = 1
-            while page <= 10:
-                qs = urllib.parse.urlencode({**{k: v for k, v in q.items() if not k.startswith("_")}, "DatePosted": min(ctx.max_age, 60), "ResultsPerPage": 500,
-                                             "Page": page, "WhoMayApply": "public"})
+            while page <= USAJOBS_MAX_PAGES:
+                qs = urllib.parse.urlencode(usajobs_params(q, ctx.max_age, page))
                 j = http(f"https://data.usajobs.gov/api/search?{qs}", headers=hdr)
                 res = (j.get("SearchResult") or {})
                 items = res.get("SearchResultItems") or []
@@ -1316,60 +1405,18 @@ def read_usajobs(cfg, ctx):
                         continue
                     seen.add(pid)
                     st["scanned"] += 1
-                    det = (d.get("UserArea") or {}).get("Details") or {}
-                    plan = ((d.get("JobGrade") or [{}])[0] or {}).get("Code", "")
-                    try:
-                        low = int(det.get("LowGrade") or 0)
-                    except ValueError:
-                        low = 0
-                    title = d.get("PositionTitle") or ""
-                    senior = plan in ("ES", "SL", "ST", "EX") or (plan in ("GS", "GG", "GM") and low >= min_grade)
-                    # Federal titles rarely say "Director", so a senior grade can stand in for a title match,
-                    # but the "skip titles" list (and internal-only) still applies to everything.
-                    if senior:
-                        if not ctx.title_allowed(title):
-                            continue
-                    elif not (ctx.title_ok(title) and low >= min_grade - 1):
+                    lst, stage = usajobs_listing(d, q, cfg, ctx)
+                    if stage != "title":
+                        st["title_matches"] += 1
+                    if lst is None:
                         continue
-                    st["title_matches"] += 1
-                    remote = str(det.get("RemoteIndicator")).lower() == "true" or "RemoteIndicator" in q
-                    locs = [l.get("LocationName", "") for l in d.get("PositionLocation") or []] or [d.get("PositionLocationDisplay", "")]
-                    w = "remote" if remote and ctx.allow_remote else ctx.where(" | ".join(locs), loose_remote=False)
-                    if "LocationName" in q and not w:
-                        w = "local"  # USAJOBS already applied the radius
-                    if not w and q.get("_nationwide") and is_nationwide(locs) and (mode == "all" or agency_match(d, agencies)):
-                        w = "nationwide"
-                    if not w:
-                        continue
-                    if w == "nationwide":
+                    if lst["where"] == "nationwide":
                         st["nationwide"] += 1
-                    pay = (d.get("PositionRemuneration") or [{}])[0] or {}
-                    sal = ""
-                    if pay.get("MinimumRange"):
-                        try:
-                            sal = f"${float(pay['MinimumRange']):,.0f}–${float(pay['MaximumRange']):,.0f}"
-                        except (TypeError, ValueError):
-                            sal = ""
-                    duties = det.get("MajorDuties") or []
-                    where_txt = d.get("PositionLocationDisplay") or "; ".join(locs[:6])
-                    desc = "\n\n".join(filter(None, [
-                        f"Location: {where_txt} — nationwide posting; the person selected must relocate to an assigned duty station."
-                        if w == "nationwide" else "",
-                        det.get("JobSummary") or "",
-                                                     "\n".join("• " + x for x in duties if isinstance(x, str)),
-                                                     d.get("QualificationSummary") or ""]))
-                    org = d.get("OrganizationName") or d.get("DepartmentName") or "Federal"
-                    grade = f"{plan}-{det.get('LowGrade')}" + (f"/{det.get('HighGrade')}" if det.get("HighGrade") and det.get("HighGrade") != det.get("LowGrade") else "") if plan else ""
                     rows.append(make_row(
-                        ctx, company=org, title=f"{d.get('PositionTitle', '')}{f' ({grade})' if grade else ''}",
-                        location={"local": pick_location(ctx, locs), "remote": "Remote (US)"}.get(
-                            w, f"Nationwide — relocation required ({where_txt[:80]})"), where=w,
-                        link=d.get("PositionURI") or "", posted=parse_date(d.get("PublicationStartDate")),
-                        closing=parse_date(d.get("ApplicationCloseDate")), description=desc, salary=sal,
-                        clearance=det.get("SecurityClearance") if det.get("SecurityClearance") not in (None, "", "Not Required", "Not Applicable") else "",
-                        employment_type="Federal (" + (((d.get("PositionSchedule") or [{}])[0] or {}).get("Name") or "Full-time") + ")",
-                        work_mode="Remote" if w == "remote" else "On-site — relocation required" if w == "nationwide" else ("Telework eligible" if str(det.get("TeleworkEligible")).lower() == "true" else "On-site"),
-                        source="USAJOBS"))
+                        ctx, company=lst["company"], title=lst["title"], location=lst["location"], where=lst["where"],
+                        link=lst["link"], posted=lst["posted"], closing=lst["closing"], description=lst["description"],
+                        salary=lst["salary"], clearance=lst["clearance"], employment_type=lst["employment_type"],
+                        work_mode=lst["work_mode"], source="USAJOBS"))
                 pages = int((res.get("UserArea") or {}).get("NumberOfPages") or 1)
                 if page >= pages or not items:
                     break

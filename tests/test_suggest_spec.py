@@ -45,3 +45,12 @@ class Inventory(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Agencies(unittest.TestCase):
+    def test_prompt(self):
+        s, u = suggest.agencies_prompt({"home_location": " Melbourne, FL ", "radius_miles": 40})
+        self.assertIs(s, suggest.AGENCIES_SYSTEM)
+        self.assertEqual(u, "Home location: Melbourne, FL\nRadius: 40 miles")
+        with self.assertRaises(ValueError):
+            suggest.agencies_prompt({})
