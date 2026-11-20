@@ -706,12 +706,111 @@ def detect(url):
 
 
 # --------------------------------------------------------------------------- readers
+# Spec section 18: each reader's per-posting logic as a function -> (row or None, stage). stage is "age" (too old),
+# "title" (title rules), "place" (not near home or a wanted remote job) or "kept". The readers only fetch.
+
+def workday_candidate(x, ctx):
+    """One Workday list entry -> (age_days or None, stage). stage "age" (too old or unknown), "title", "place"
+    or "candidate" (worth opening its details)."""
+    age = workday_age(x.get("postedOn"))
+    if age is None or age > ctx.max_age:
+        return None, "age"
+    if not ctx.title_ok(x.get("title")):
+        return age, "title"
+    loc = x.get("locationsText") or ""
+    multi = bool(re.match(r"^\d+\s+Locations?$", loc.strip(), re.I))
+    if multi or ctx.where(loc, remote_flag=bool(re.search(r"remote", x.get("remoteType") or "", re.I))):
+        return age, "candidate"
+    return age, "place"
+
+
+def workday_listing(d, x, age, name, public, ctx):
+    """A Workday posting's details (jobPostingInfo) + its list entry -> (row or None, stage)."""
+    locs = [d.get("location") or x.get("locationsText") or ""] + list(d.get("additionalLocations") or [])
+    rtype = d.get("remoteType") or x.get("remoteType") or ""
+    w = ctx.where(" | ".join(locs), remote_flag=bool(re.search(r"remote", rtype, re.I)))
+    if not w:
+        return None, "place"
+    posted = parse_date(d.get("startDate")) or (ctx.today - timedelta(days=age)).isoformat()
+    if not ctx.age_ok(posted):
+        return None, "age"
+    mode = "Remote" if w == "remote" else ("Hybrid" if re.search(r"hybrid", rtype, re.I) else "On-site")
+    return make_row(ctx, company=name, title=d.get("title") or x.get("title"),
+                    location=tidy_loc(pick_location(ctx, locs)), where=w,
+                    link=d.get("externalUrl") or public + x["externalPath"], posted=posted,
+                    description=html_to_text(d.get("jobDescription")), work_mode=mode,
+                    employment_type=employment(d.get("timeType")),
+                    source=f"{name} careers (Workday)"), "kept"
+
+
+def greenhouse_listing(x, name, ctx):
+    posted = parse_date(x.get("first_published") or x.get("updated_at"))
+    if not ctx.age_ok(posted):
+        return None, "age"
+    if not ctx.title_ok(x.get("title")):
+        return None, "title"
+    loc = (x.get("location") or {}).get("name") or ""
+    w = ctx.where(loc)
+    if not w:
+        return None, "place"
+    meta = {m.get("name"): m.get("value") for m in x.get("metadata") or [] if isinstance(m, dict)}
+    return make_row(ctx, company=name, title=x.get("title"), location=loc, where=w,
+                    link=x.get("absolute_url"), posted=posted, description=html_to_text(x.get("content")),
+                    employment_type=employment(meta.get("Employment Type")),
+                    source=f"{name} careers (Greenhouse)"), "kept"
+
+
+def lever_listing(x, name, ctx):
+    posted = parse_date(x.get("createdAt"))
+    if not ctx.age_ok(posted):
+        return None, "age"
+    if not ctx.title_ok(x.get("text")):
+        return None, "title"
+    cat = x.get("categories") or {}
+    locs = [cat.get("location") or ""] + list(cat.get("allLocations") or [])
+    wt = x.get("workplaceType") or ""
+    w = ctx.where(" | ".join(locs), remote_flag=wt == "remote")
+    if not w:
+        return None, "place"
+    parts = [x.get("descriptionPlain") or ""]
+    for lst in x.get("lists") or []:
+        parts.append((lst.get("text") or "") + "\n" + html_to_text(lst.get("content")))
+    parts.append(x.get("additionalPlain") or "")
+    sr = x.get("salaryRange") or {}
+    sal = f"${sr['min']:,}–${sr['max']:,}" if sr.get("min") and sr.get("max") else ""
+    return make_row(ctx, company=name, title=x.get("text"), location=pick_location(ctx, locs), where=w,
+                    link=x.get("hostedUrl"), posted=posted, description="\n\n".join(parts), salary=sal,
+                    work_mode={"remote": "Remote", "hybrid": "Hybrid"}.get(wt, ""),
+                    employment_type=employment(cat.get("commitment")),
+                    source=f"{name} careers (Lever)"), "kept"
+
+
+def ashby_listing(x, name, ctx):
+    posted = parse_date(x.get("publishedAt"))
+    if not ctx.age_ok(posted):
+        return None, "age"
+    if not ctx.title_ok(x.get("title")):
+        return None, "title"
+    locs = [x.get("location") or ""] + [s.get("location") or "" for s in x.get("secondaryLocations") or []]
+    w = ctx.where(" | ".join(locs), remote_flag=bool(x.get("isRemote")))
+    if not w:
+        return None, "place"
+    comp = (x.get("compensation") or {}).get("compensationTierSummary") or ""
+    return make_row(ctx, company=name, title=x.get("title"), location=pick_location(ctx, locs), where=w,
+                    link=x.get("jobUrl"), posted=posted, description=x.get("descriptionPlain") or "",
+                    salary=comp, employment_type=employment(x.get("employmentType")),
+                    source=f"{name} careers (Ashby)"), "kept"
+
+
+WORKDAY_PAGE = 20
+
+
 def read_workday(board, p, ctx, st):
     base = f"https://{p['host']}/wday/cxs/{p['tenant']}/{p['site']}"
     public = f"https://{p['host']}/{p['site']}"
     cands, offset, total = [], 0, None
     for _ in range(ctx.max_pages):
-        j = http(base + "/jobs", {"appliedFacets": {}, "limit": 20, "offset": offset, "searchText": ""})
+        j = http(base + "/jobs", {"appliedFacets": {}, "limit": WORKDAY_PAGE, "offset": offset, "searchText": ""})
         posts = j.get("jobPostings") or []
         if total is None:
             total = j.get("total") or 0
@@ -719,18 +818,14 @@ def read_workday(board, p, ctx, st):
             break
         old = 0
         for x in posts:
-            age = workday_age(x.get("postedOn"))
-            if age is None or age > ctx.max_age:
+            age, stage = workday_candidate(x, ctx)
+            if stage == "age":
                 old += 1
                 continue
             st["scanned"] += 1
-            if not ctx.title_ok(x.get("title")):
-                continue
-            loc = x.get("locationsText") or ""
-            multi = bool(re.match(r"^\d+\s+Locations?$", loc.strip(), re.I))
-            if multi or ctx.where(loc, remote_flag=bool(re.search(r"remote", x.get("remoteType") or "", re.I))):
+            if stage == "candidate":
                 cands.append((x, age))
-        offset += 20
+        offset += WORKDAY_PAGE
         if old == len(posts) or offset >= total:
             break
     st["title_matches"] = len(cands)
@@ -740,86 +835,42 @@ def read_workday(board, p, ctx, st):
         except ReaderError as e:
             st["errors"].append(str(e))
             continue
-        locs = [d.get("location") or x.get("locationsText") or ""] + list(d.get("additionalLocations") or [])
-        rtype = d.get("remoteType") or x.get("remoteType") or ""
-        w = ctx.where(" | ".join(locs), remote_flag=bool(re.search(r"remote", rtype, re.I)))
-        if not w:
-            continue
-        posted = parse_date(d.get("startDate")) or (ctx.today - timedelta(days=age)).isoformat()
-        if not ctx.age_ok(posted):
-            continue
-        mode = "Remote" if w == "remote" else ("Hybrid" if re.search(r"hybrid", rtype, re.I) else "On-site")
-        yield make_row(ctx, company=board["name"], title=d.get("title") or x.get("title"),
-                       location=tidy_loc(pick_location(ctx, locs)), where=w,
-                       link=d.get("externalUrl") or public + x["externalPath"], posted=posted,
-                       description=html_to_text(d.get("jobDescription")), work_mode=mode,
-                       employment_type=employment(d.get("timeType")),
-                       source=f"{board['name']} careers (Workday)")
+        row, _stage = workday_listing(d, x, age, board["name"], public, ctx)
+        if row:
+            yield row
 
 
 def read_greenhouse(board, p, ctx, st):
     j = http(f"https://boards-api.greenhouse.io/v1/boards/{p['token']}/jobs?content=true", timeout=60)
     for x in j.get("jobs") or []:
         st["scanned"] += 1
-        posted = parse_date(x.get("first_published") or x.get("updated_at"))
-        if not ctx.age_ok(posted) or not ctx.title_ok(x.get("title")):
-            continue
-        st["title_matches"] += 1
-        loc = (x.get("location") or {}).get("name") or ""
-        w = ctx.where(loc)
-        if not w:
-            continue
-        meta = {m.get("name"): m.get("value") for m in x.get("metadata") or [] if isinstance(m, dict)}
-        yield make_row(ctx, company=board["name"], title=x.get("title"), location=loc, where=w,
-                       link=x.get("absolute_url"), posted=posted, description=html_to_text(x.get("content")),
-                       employment_type=employment(meta.get("Employment Type")),
-                       source=f"{board['name']} careers (Greenhouse)")
+        row, stage = greenhouse_listing(x, board["name"], ctx)
+        if stage in ("place", "kept"):
+            st["title_matches"] += 1
+        if row:
+            yield row
 
 
 def read_lever(board, p, ctx, st):
     arr = http(f"https://api.lever.co/v0/postings/{p['token']}?mode=json", timeout=60)
     for x in arr if isinstance(arr, list) else []:
         st["scanned"] += 1
-        posted = parse_date(x.get("createdAt"))
-        if not ctx.age_ok(posted) or not ctx.title_ok(x.get("text")):
-            continue
-        st["title_matches"] += 1
-        cat = x.get("categories") or {}
-        locs = [cat.get("location") or ""] + list(cat.get("allLocations") or [])
-        wt = x.get("workplaceType") or ""
-        w = ctx.where(" | ".join(locs), remote_flag=wt == "remote")
-        if not w:
-            continue
-        parts = [x.get("descriptionPlain") or ""]
-        for lst in x.get("lists") or []:
-            parts.append((lst.get("text") or "") + "\n" + html_to_text(lst.get("content")))
-        parts.append(x.get("additionalPlain") or "")
-        sr = x.get("salaryRange") or {}
-        sal = f"${sr['min']:,}–${sr['max']:,}" if sr.get("min") and sr.get("max") else ""
-        yield make_row(ctx, company=board["name"], title=x.get("text"), location=pick_location(ctx, locs), where=w,
-                       link=x.get("hostedUrl"), posted=posted, description="\n\n".join(parts), salary=sal,
-                       work_mode={"remote": "Remote", "hybrid": "Hybrid"}.get(wt, ""),
-                       employment_type=employment(cat.get("commitment")),
-                       source=f"{board['name']} careers (Lever)")
+        row, stage = lever_listing(x, board["name"], ctx)
+        if stage in ("place", "kept"):
+            st["title_matches"] += 1
+        if row:
+            yield row
 
 
 def read_ashby(board, p, ctx, st):
     j = http(f"https://api.ashbyhq.com/posting-api/job-board/{p['token']}?includeCompensation=true", timeout=60)
     for x in j.get("jobs") or []:
         st["scanned"] += 1
-        posted = parse_date(x.get("publishedAt"))
-        if not ctx.age_ok(posted) or not ctx.title_ok(x.get("title")):
-            continue
-        st["title_matches"] += 1
-        locs = [x.get("location") or ""] + [s.get("location") or "" for s in x.get("secondaryLocations") or []]
-        w = ctx.where(" | ".join(locs), remote_flag=bool(x.get("isRemote")))
-        if not w:
-            continue
-        comp = (x.get("compensation") or {}).get("compensationTierSummary") or ""
-        yield make_row(ctx, company=board["name"], title=x.get("title"), location=pick_location(ctx, locs), where=w,
-                       link=x.get("jobUrl"), posted=posted, description=x.get("descriptionPlain") or "",
-                       salary=comp, employment_type=employment(x.get("employmentType")),
-                       source=f"{board['name']} careers (Ashby)")
+        row, stage = ashby_listing(x, board["name"], ctx)
+        if stage in ("place", "kept"):
+            st["title_matches"] += 1
+        if row:
+            yield row
 
 
 def read_smartrecruiters(board, p, ctx, st):
