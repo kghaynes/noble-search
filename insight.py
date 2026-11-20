@@ -247,10 +247,22 @@ def why_not(job):
     """job = {link, title, company, location}. Returns {title, steps:[{name, ok, text, fixes}], verdict}."""
     link = str(job.get("link") or "").strip()[:1000]
     title = str(job.get("title") or "").strip()[:200]
+    if link and not title:
+        title = _page_title(link)
+    rows = _rows("SELECT job_key, title, company, location, status, link, posted_date, last_seen FROM jobs") if title else []
+    recent = [(started, rows_) for _rid, started, rows_ in search.recent_titles(3)] if title else []
+    return why_not_steps({**job, "title": title}, search.get_config(include_secret=True), ps.get_profile(),
+                         [dict(r) for r in rows], recent)
+
+
+def why_not_steps(job, cfg, prof, rows, recent):
+    """Spec section 19: one job walked through every step of the search. rows = the job list (dicts with
+    job_key, title, company, status, link); recent = [(started, [[source, title, outcome, why], ...])] for the
+    last three runs, newest first. Returns {need, text} or {title, steps, verdict}."""
+    link = str(job.get("link") or "").strip()[:1000]
+    title = str(job.get("title") or "").strip()[:200]
     company = str(job.get("company") or "").strip()[:120]
     location = str(job.get("location") or "").strip()[:160]
-    cfg = search.get_config(include_secret=True)
-    prof = ps.get_profile()
     ctx = sources.Context(cfg, prof)
     steps = []
 
@@ -258,15 +270,13 @@ def why_not(job):
         steps.append({"name": name, "ok": ok, "text": text, "fixes": fixes or [], "short": short})
 
     host = urllib.parse.urlparse(link).netloc.lower().split(":")[0] if link else ""
-    if link and not title:
-        title = _page_title(link)
     if not title:
         return {"need": "title", "text": "Couldn't read the job title from that link (many sites block automated reading). "
                                          "Type the job title (and the location if you know it), then check again."}
 
     # 1. already in the list?
     hits = []
-    for r in _rows("SELECT job_key, title, company, location, status, link, posted_date, last_seen FROM jobs"):
+    for r in rows:
         if (link and r["link"] and r["link"].split("?")[0] == link.split("?")[0]) or \
            (_similar(r["title"], title) and (not company or company.lower()[:8] in (r["company"] or "").lower())):
             hits.append(r)
@@ -335,8 +345,8 @@ def why_not(job):
 
     # 5. did a search see it?
     found = None
-    for rid, started, rows in search.recent_titles(3):
-        for src, t, out, why in rows:
+    for started, seen in recent:
+        for src, t, out, why in seen:
             if _similar(t, title):
                 found = (started, src, out, why)
                 break

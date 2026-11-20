@@ -873,6 +873,32 @@ def read_ashby(board, p, ctx, st):
             yield row
 
 
+def smartrecruiters_candidate(x, ctx):
+    """One SmartRecruiters list entry -> (candidate or None, stage). candidate = (posted, location text, where)."""
+    posted = parse_date(x.get("releasedDate"))
+    if not ctx.age_ok(posted):
+        return None, "age"
+    if not ctx.title_ok(x.get("name")):
+        return None, "title"
+    loc = x.get("location") or {}
+    txt = loc.get("fullLocation") or ", ".join(filter(None, [loc.get("city"), loc.get("region"), loc.get("country")]))
+    w = ctx.where(txt, remote_flag=bool(loc.get("remote")))
+    if not w:
+        return None, "place"
+    return (posted, txt, w), "candidate"
+
+
+def smartrecruiters_listing(d, x, cand, name, token, ctx):
+    """A SmartRecruiters posting's details + its list entry + its candidate -> (row, "kept")."""
+    posted, txt, w = cand
+    sec = (d.get("jobAd") or {}).get("sections") or {}
+    desc = "\n\n".join(html_to_text((sec.get(k) or {}).get("text")) for k in
+                       ("companyDescription", "jobDescription", "qualifications", "additionalInformation"))
+    return make_row(ctx, company=name, title=x.get("name"), location=txt, where=w,
+                    link=d.get("postingUrl") or f"https://jobs.smartrecruiters.com/{token}/{x['id']}",
+                    posted=posted, description=desc, source=f"{name} careers (SmartRecruiters)"), "kept"
+
+
 def read_smartrecruiters(board, p, ctx, st):
     base = f"https://api.smartrecruiters.com/v1/companies/{p['token']}/postings"
     cands, offset = [], 0
@@ -881,30 +907,46 @@ def read_smartrecruiters(board, p, ctx, st):
         items = j.get("content") or []
         for x in items:
             st["scanned"] += 1
-            posted = parse_date(x.get("releasedDate"))
-            if not ctx.age_ok(posted) or not ctx.title_ok(x.get("name")):
-                continue
-            loc = x.get("location") or {}
-            txt = loc.get("fullLocation") or ", ".join(filter(None, [loc.get("city"), loc.get("region"), loc.get("country")]))
-            w = ctx.where(txt, remote_flag=bool(loc.get("remote")))
-            if w:
-                cands.append((x, posted, txt, w))
+            cand, _stage = smartrecruiters_candidate(x, ctx)
+            if cand:
+                cands.append((x, cand))
         offset += 100
         if not items or offset >= (j.get("totalFound") or 0):
             break
     st["title_matches"] = len(cands)
-    for x, posted, txt, w in cands[: ctx.detail_cap]:
+    for x, cand in cands[: ctx.detail_cap]:
         try:
             d = http(f"{base}/{x['id']}")
         except ReaderError as e:
             st["errors"].append(str(e))
             continue
-        sec = (d.get("jobAd") or {}).get("sections") or {}
-        desc = "\n\n".join(html_to_text((sec.get(k) or {}).get("text")) for k in
-                           ("companyDescription", "jobDescription", "qualifications", "additionalInformation"))
-        yield make_row(ctx, company=board["name"], title=x.get("name"), location=txt, where=w,
-                       link=d.get("postingUrl") or f"https://jobs.smartrecruiters.com/{p['token']}/{x['id']}",
-                       posted=posted, description=desc, source=f"{board['name']} careers (SmartRecruiters)")
+        row, _stage = smartrecruiters_listing(d, x, cand, board["name"], p["token"], ctx)
+        yield row
+
+
+def bamboohr_candidate(x, ctx):
+    """One BambooHR list entry -> (candidate or None, stage). candidate = (location text, where)."""
+    if not ctx.title_ok(x.get("jobOpeningName")):
+        return None, "title"
+    loc = x.get("location") or {}
+    txt = ", ".join(filter(None, [loc.get("city"), loc.get("state")]))
+    w = ctx.where(txt, remote_flag=bool(x.get("isRemote")) or str(x.get("locationType")) == "1")
+    if not w:
+        return None, "place"
+    return (txt, w), "candidate"
+
+
+def bamboohr_listing(d, x, cand, name, base, ctx):
+    """A BambooHR opening's details (result.jobOpening) + its list entry + its candidate -> (row or None, stage)."""
+    txt, w = cand
+    posted = parse_date(d.get("datePosted"))
+    if not ctx.age_ok(posted):
+        return None, "age"
+    return make_row(ctx, company=name, title=x.get("jobOpeningName"), location=tidy_loc(txt), where=w,
+                    link=d.get("jobOpeningShareUrl") or f"{base}/{x['id']}", posted=posted,
+                    description=html_to_text(d.get("description")), salary=d.get("compensation") or "",
+                    employment_type=employment(d.get("employmentStatusLabel")),
+                    source=f"{name} careers (BambooHR)"), "kept"
 
 
 def read_bamboohr(board, p, ctx, st):
@@ -912,74 +954,87 @@ def read_bamboohr(board, p, ctx, st):
     j = http(base + "/list")
     for x in j.get("result") or []:
         st["scanned"] += 1
-        if not ctx.title_ok(x.get("jobOpeningName")):
-            continue
-        st["title_matches"] += 1
-        loc = x.get("location") or {}
-        txt = ", ".join(filter(None, [loc.get("city"), loc.get("state")]))
-        w = ctx.where(txt, remote_flag=bool(x.get("isRemote")) or str(x.get("locationType")) == "1")
-        if not w:
+        cand, stage = bamboohr_candidate(x, ctx)
+        if stage != "title":
+            st["title_matches"] += 1
+        if not cand:
             continue
         try:
             d = (http(f"{base}/{x['id']}/detail").get("result") or {}).get("jobOpening") or {}
         except ReaderError as e:
             st["errors"].append(str(e))
             continue
-        posted = parse_date(d.get("datePosted"))
-        if not ctx.age_ok(posted):
-            continue
-        yield make_row(ctx, company=board["name"], title=x.get("jobOpeningName"), location=tidy_loc(txt), where=w,
-                       link=d.get("jobOpeningShareUrl") or f"{base}/{x['id']}", posted=posted,
-                       description=html_to_text(d.get("description")), salary=d.get("compensation") or "",
-                       employment_type=employment(d.get("employmentStatusLabel")),
-                       source=f"{board['name']} careers (BambooHR)")
+        row, _stage = bamboohr_listing(d, x, cand, board["name"], base, ctx)
+        if row:
+            yield row
+
+
+def eightfold_candidate(x, ctx):
+    """One Eightfold search position -> (candidate or None, stage). candidate = (posted, locations, where, work option)."""
+    posted = parse_date(x.get("postedTs") or x.get("creationTs"))
+    if not ctx.age_ok(posted):
+        return None, "age"
+    if not ctx.title_ok(x.get("name")):
+        return None, "title"
+    locs = list(x.get("standardizedLocations") or x.get("locations") or [])
+    wlo = (x.get("workLocationOption") or "").lower()
+    tele = " ".join(x.get("efcustomTextCustteleworklocation") or [])
+    w = ctx.where(" | ".join(locs), remote_flag=("remote" in wlo) or "full time" in tele.lower())
+    if not w:
+        return None, "place"
+    return (posted, locs, w, wlo), "candidate"
+
+
+def eightfold_listing(d, x, cand, name, host, ctx):
+    """An Eightfold position's details (data, may be empty) + its search entry + its candidate -> (row, "kept")."""
+    posted, locs, w, wlo = cand
+    clr = " ".join(d.get("efcustomTextFinalclearancefortherole") or x.get("efcustomTextFinalclearancefortherole") or [])
+    pay = " ".join(d.get("efcustomTextCustpayrange") or x.get("efcustomTextCustpayrange") or [])
+    mode = "Remote" if w == "remote" else ("Hybrid" if "hybrid" in wlo else "On-site")
+    link = d.get("publicUrl") or f"https://{host}/careers/job/{x['id']}"
+    return make_row(ctx, company=name, title=x.get("name"), location=pick_location(ctx, locs), where=w,
+                    link=link, posted=posted, description=html_to_text(d.get("jobDescription")),
+                    salary=pay.replace(".00", ""), clearance=clr if clr and clr.lower() not in ("none", "n/a") else "",
+                    work_mode=mode, source=f"{name} careers (Eightfold)"), "kept"
+
+
+def eightfold_query(p, ctx, start):
+    """Query string for one Eightfold search page (sorted newest first, near home, remote included)."""
+    return urllib.parse.urlencode({"domain": p["domain"], "query": "", "location": ctx.home_city, "start": start,
+                                   "sort_by": "timestamp", "filter_distance": ctx.radius,
+                                   "filter_include_remote": 1})
 
 
 def read_eightfold(board, p, ctx, st):
     base = f"https://{p['host']}/api/pcsx"
     cands, start = [], 0
     for _ in range(ctx.max_pages):
-        q = urllib.parse.urlencode({"domain": p["domain"], "query": "", "location": ctx.home_city, "start": start,
-                                    "sort_by": "timestamp", "filter_distance": ctx.radius,
-                                    "filter_include_remote": 1})
-        d = http(f"{base}/search?{q}").get("data") or {}
+        d = http(f"{base}/search?{eightfold_query(p, ctx, start)}").get("data") or {}
         pos = d.get("positions") or []
         if not pos:
             break
         old = 0
         for x in pos:
-            posted = parse_date(x.get("postedTs") or x.get("creationTs"))
-            if not ctx.age_ok(posted):
+            cand, stage = eightfold_candidate(x, ctx)
+            if stage == "age":
                 old += 1
                 continue
             st["scanned"] += 1
-            if not ctx.title_ok(x.get("name")):
-                continue
-            locs = list(x.get("standardizedLocations") or x.get("locations") or [])
-            wlo = (x.get("workLocationOption") or "").lower()
-            tele = " ".join(x.get("efcustomTextCustteleworklocation") or [])
-            w = ctx.where(" | ".join(locs), remote_flag=("remote" in wlo) or "full time" in tele.lower())
-            if w:
-                cands.append((x, posted, locs, w, wlo))
+            if cand:
+                cands.append((x, cand))
         start += len(pos)
         if old == len(pos) or start >= (d.get("count") or 0):
             break
     st["title_matches"] = len(cands)
-    for x, posted, locs, w, wlo in cands[: ctx.detail_cap]:
+    for x, cand in cands[: ctx.detail_cap]:
         try:
             q = urllib.parse.urlencode({"position_id": x["id"], "domain": p["domain"], "hl": "en"})
             d = http(f"{base}/position_details?{q}").get("data") or {}
         except ReaderError as e:
             st["errors"].append(str(e))
             d = {}
-        clr = " ".join(d.get("efcustomTextFinalclearancefortherole") or x.get("efcustomTextFinalclearancefortherole") or [])
-        pay = " ".join(d.get("efcustomTextCustpayrange") or x.get("efcustomTextCustpayrange") or [])
-        mode = "Remote" if w == "remote" else ("Hybrid" if "hybrid" in wlo else "On-site")
-        link = d.get("publicUrl") or f"https://{p['host']}/careers/job/{x['id']}"
-        yield make_row(ctx, company=board["name"], title=x.get("name"), location=pick_location(ctx, locs), where=w,
-                       link=link, posted=posted, description=html_to_text(d.get("jobDescription")),
-                       salary=pay.replace(".00", ""), clearance=clr if clr and clr.lower() not in ("none", "n/a") else "",
-                       work_mode=mode, source=f"{board['name']} careers (Eightfold)")
+        row, _stage = eightfold_listing(d, x, cand, board["name"], p["host"], ctx)
+        yield row
 
 
 # ---- generic career site: sitemap + structured data on each job page
@@ -992,24 +1047,39 @@ def _blocked(text):
     return "<urlset" not in head and "<sitemapindex" not in head and "JobPosting" not in text and bool(BOT_CHECK.search(head))
 
 
-def _sitemap_urls(url, depth=0):
-    xml = http(url, as_json=False, timeout=60)
-    if _blocked(xml):
-        raise ReaderError("Site blocks automated readers with a bot check. Set this employer to Off; "
-                          "job-board search covers it.")
+def sitemap_children(xml):
+    """A sitemap index -> the child sitemaps to read (job-looking ones, else the first five; at most six),
+    or None when the document isn't an index."""
+    if "<sitemapindex" not in xml[:2000]:
+        return None
+    subs = re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", xml)
+    jobby = [x for x in subs if re.search(r"job|posting|career|position", x, re.I)] or subs[:5]
+    return [html.unescape(x) for x in jobby[:6]]
+
+
+def sitemap_entries(xml):
+    """A sitemap's <url> entries -> [(link, lastmod as a date or "")]."""
     out = []
-    if "<sitemapindex" in xml[:2000] and depth < 2:
-        subs = re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", xml)
-        jobby = [s for s in subs if re.search(r"job|posting|career|position", s, re.I)] or subs[:5]
-        for s in jobby[:6]:
-            out += _sitemap_urls(html.unescape(s), depth + 1)
-        return out
     for block in re.findall(r"<url>(.*?)</url>", xml, re.S):
         loc = re.search(r"<loc>\s*([^<\s]+)\s*</loc>", block)
         mod = re.search(r"<lastmod>\s*([^<\s]+)\s*</lastmod>", block)
         if loc:
             out.append((html.unescape(loc.group(1)), parse_date(mod.group(1)) if mod else ""))
     return out
+
+
+def _sitemap_urls(url, depth=0):
+    xml = http(url, as_json=False, timeout=60)
+    if _blocked(xml):
+        raise ReaderError("Site blocks automated readers with a bot check. Set this employer to Off; "
+                          "job-board search covers it.")
+    subs = sitemap_children(xml) if depth < 2 else None
+    if subs is not None:
+        out = []
+        for x in subs:
+            out += _sitemap_urls(x, depth + 1)
+        return out
+    return sitemap_entries(xml)
 
 
 def _jsonld_posting(page):
@@ -1201,51 +1271,74 @@ def read_job_link(url):
     return out
 
 
-def read_sitemap(board, p, ctx, st):
-    urls = _sitemap_urls(p["sitemap"])
-    jobs = [(u, m) for u, m in urls if re.search(r"/job(s|detail)?/", u, re.I) and not re.search(r"applied", u, re.I)]
-    st["scanned"] = len(jobs)
-    if not jobs:
-        raise ReaderError("No job pages listed in the site map")
+def sitemap_jobs(urls):
+    """Sitemap entries -> the job pages among them (a /job/, /jobs/ or /jobdetail/ path, never 'applied')."""
+    return [(u, m) for u, m in urls if re.search(r"/job(s|detail)?/", u, re.I) and not re.search(r"applied", u, re.I)]
+
+
+def sitemap_candidates(jobs, ctx):
+    """Job pages -> the ones worth opening, in order: title rules on the link's path; skipped when the lastmod
+    dates look real (more than three different ones in the first 50) and this one is too old; pages whose path
+    names a home-area town, "remote", "united states" or "telework" first, otherwise in sitemap order."""
     hint_words = [n for n, _, _ in ctx.places] + ["remote", "united states", "telework"]
+    real_dates = len({m for _, m in jobs[:50]}) > 3
     cands = []
     for u, mod in jobs:
         slug = _norm(urllib.parse.urlparse(u).path)
         if not ctx.title_ok(slug):
             continue
-        if mod and not ctx.age_ok(mod) and len({m for _, m in jobs[:50]}) > 3:
-            continue  # lastmod looks real (not all one value) and is old
+        if mod and not ctx.age_ok(mod) and real_dates:
+            continue
         near = any(re.search(rf"\b{re.escape(h)}\b", slug) for h in hint_words if h)
         cands.append((0 if near else 1, u, mod))
     cands.sort()
+    return [(u, mod) for _, u, mod in cands]
+
+
+def sitemap_listing(page, u, mod, name, ctx):
+    """One job page from a sitemap -> (row or None, stage)."""
+    d = parse_job_page(page)
+    title = d["title"] or _norm(urllib.parse.urlparse(u).path.split("/")[-2]).title()
+    if not ctx.title_ok(title):
+        return None, "title"
+    if d["structured"]:
+        w = ctx.where(" | ".join(d["locations"]), remote_flag=d["remote"]) if (d["locations"] or d["remote"]) \
+            else ctx.where(_norm(urllib.parse.urlparse(u).path), loose_remote=False)
+    else:
+        w = ctx.where(d["description"][:6000], loose_remote=False) or \
+            (ctx.where(title) if REMOTE_RE.search(title.lower()) else None)
+    if not w:
+        return None, "place"
+    posted = d["posted"] or mod
+    if not ctx.age_ok(posted):
+        return None, "age"
+    loc = pick_location(ctx, d["locations"]) if d["locations"] else (
+        next((pl for n, _, pl in ctx.places if re.search(rf"\b{re.escape(n)}\b", _norm(d["description"][:6000]))), "")
+        if w == "local" else "Remote (US)")
+    return make_row(ctx, company=name, title=title, location=tidy_loc(loc), where=w, link=u,
+                    posted=d["posted"], closing=d["closing"], description=d["description"], salary=d["salary"],
+                    employment_type=employment(d["employment"]), source=f"{name} careers"), "kept"
+
+
+SITEMAP_DETAIL_CAP = 120
+
+
+def read_sitemap(board, p, ctx, st):
+    jobs = sitemap_jobs(_sitemap_urls(p["sitemap"]))
+    st["scanned"] = len(jobs)
+    if not jobs:
+        raise ReaderError("No job pages listed in the site map")
+    cands = sitemap_candidates(jobs, ctx)
     st["title_matches"] = len(cands)
-    for _, u, mod in cands[: max(ctx.detail_cap, 120)]:
+    for u, mod in cands[: max(ctx.detail_cap, SITEMAP_DETAIL_CAP)]:
         try:
             page = http(u, as_json=False)
         except ReaderError as e:
             st["errors"].append(str(e))
             continue
-        d = parse_job_page(page)
-        title = d["title"] or _norm(urllib.parse.urlparse(u).path.split("/")[-2]).title()
-        if not ctx.title_ok(title):
-            continue
-        if d["structured"]:
-            w = ctx.where(" | ".join(d["locations"]), remote_flag=d["remote"]) if (d["locations"] or d["remote"]) \
-                else ctx.where(_norm(urllib.parse.urlparse(u).path), loose_remote=False)
-        else:
-            w = ctx.where(d["description"][:6000], loose_remote=False) or \
-                (ctx.where(title) if REMOTE_RE.search(title.lower()) else None)
-        if not w:
-            continue
-        posted = d["posted"] or mod
-        if not ctx.age_ok(posted):
-            continue
-        loc = pick_location(ctx, d["locations"]) if d["locations"] else (
-            next((pl for n, _, pl in ctx.places if re.search(rf"\b{re.escape(n)}\b", _norm(d["description"][:6000]))), "")
-            if w == "local" else "Remote (US)")
-        yield make_row(ctx, company=board["name"], title=title, location=tidy_loc(loc), where=w, link=u,
-                       posted=d["posted"], closing=d["closing"], description=d["description"], salary=d["salary"],
-                       employment_type=employment(d["employment"]), source=f"{board['name']} careers")
+        row, _stage = sitemap_listing(page, u, mod, board["name"], ctx)
+        if row:
+            yield row
 
 
 READERS = {
