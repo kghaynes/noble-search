@@ -144,7 +144,14 @@ def set_closed(key, closed):
 def should_reopen(existing, row):
     """A closed job seen again reopens — unless you closed it and only a job board still shows it
     (boards often keep stale listings)."""
-    if _db is None or not existing.get("closed_on"):
+    if _db is None:
+        return False
+    return reopen_wanted(existing, row)
+
+
+def reopen_wanted(existing, row):
+    """Spec section 21: does a closed job that a search returned again reopen?"""
+    if not existing.get("closed_on"):
         return False
     strong = "careers" in str(row.get("sources") or "") or str(row.get("sources") or "") == "USAJOBS"
     return existing.get("closed_by") != "you" or strong
@@ -169,14 +176,8 @@ def _source_jobs(conn, name, kind):
 def detect(name, kind, st, seen_titles, fingerprint, max_age, run_id=None, today=None):
     """After one source read: mark the jobs it no longer lists as closed. Returns (closed_keys, note)."""
     today = today or _today()
-    if kind == "jsearch":
-        return [], "job boards never close jobs automatically"
-    if not st.get("ok") or st.get("skipped"):
-        return [], "read didn't work"
-    seen = {_norm(t) for t in seen_titles if t}
-    n = len(seen_titles)
-    if n == 0 or n >= SEEN_CAP:
-        return [], "no complete list of titles"
+    if kind == "jsearch" or not st.get("ok") or st.get("skipped") or not seen_titles or len(seen_titles) >= SEEN_CAP:
+        return [], closure_plan(kind, st, seen_titles, fingerprint, None, [], max_age, today)["note"]
     db_fn, lock = _db
     with lock, db_fn() as conn:
         prev_raw = _meta(conn, f"closures:{name}")
@@ -184,24 +185,48 @@ def detect(name, kind, st, seen_titles, fingerprint, max_age, run_id=None, today
             prev = json.loads(prev_raw) if prev_raw else None
         except json.JSONDecodeError:
             prev = None
-        if not prev or prev.get("fp") != fingerprint:
-            _meta(conn, f"closures:{name}", json.dumps({"fp": fingerprint, "seen": n}))
-            return [], "first read (or first since its settings changed)"
-        if n < MIN_SEEN_SHARE * (prev.get("seen") or 0):
-            return [], f"only {n} listings (usually {prev.get('seen')})"
-        _meta(conn, f"closures:{name}", json.dumps({"fp": fingerprint, "seen": n}))
+        plan = closure_plan(kind, st, seen_titles, fingerprint, prev, _source_jobs(conn, name, kind), max_age, today)
+        if plan["meta"] is not None:
+            _meta(conn, f"closures:{name}", json.dumps(plan["meta"]))
+        if plan["note"]:
+            return [], plan["note"]
+        rows = {r["job_key"]: r for r in _source_jobs(conn, name, kind)}
         closed = []
-        for row in _source_jobs(conn, name, kind):
-            if row.get("last_seen") == today.isoformat() or still_listed(row.get("title"), seen):
-                continue
-            start = _d(row.get("posted_date")) or _d(row.get("first_seen"))
-            if not start or (today - start).days > max_age - AGE_MARGIN:
-                continue   # older than the window this reader scans: only the link check may close it
-            _mark(conn, row, "usajobs" if kind == "usajobs" else "employer", today, run_id)
-            closed.append(row["job_key"])
+        for key in plan["close"]:
+            _mark(conn, rows[key], "usajobs" if kind == "usajobs" else "employer", today, run_id)
+            closed.append(key)
     if closed:
         applog.info("closed", f"{name}: {len(closed)} posting(s) taken down")
     return closed, ""
+
+
+def closure_plan(kind, st, seen_titles, fingerprint, prev, jobs, max_age, today):
+    """Spec section 21: after one source read, which of its open jobs it no longer lists.
+    st = the read's status ({ok, skipped}); seen_titles = every title the read looked at; prev = what the last
+    read stored ({fp, seen}) or None; jobs = this source's open jobs (job_key, title, posted_date, first_seen,
+    last_seen); today = a date. Returns {close: [job_key], meta: what to store now (or None), note}."""
+    if kind == "jsearch":
+        return {"close": [], "meta": None, "note": "job boards never close jobs automatically"}
+    if not st.get("ok") or st.get("skipped"):
+        return {"close": [], "meta": None, "note": "read didn't work"}
+    seen = {_norm(t) for t in seen_titles if t}
+    n = len(seen_titles)
+    if n == 0 or n >= SEEN_CAP:
+        return {"close": [], "meta": None, "note": "no complete list of titles"}
+    meta = {"fp": fingerprint, "seen": n}
+    if not prev or prev.get("fp") != fingerprint:
+        return {"close": [], "meta": meta, "note": "first read (or first since its settings changed)"}
+    if n < MIN_SEEN_SHARE * (prev.get("seen") or 0):
+        return {"close": [], "meta": None, "note": f"only {n} listings (usually {prev.get('seen')})"}
+    close = []
+    for row in jobs:
+        if row.get("last_seen") == today.isoformat() or still_listed(row.get("title"), seen):
+            continue
+        start = _d(row.get("posted_date")) or _d(row.get("first_seen"))
+        if not start or (today - start).days > max_age - AGE_MARGIN:
+            continue   # older than the window this reader scans: only the link check may close it
+        close.append(row["job_key"])
+    return {"close": close, "meta": meta, "note": ""}
 
 
 # --------------------------------------------------------------------------- link check (watchlist only)
@@ -222,19 +247,33 @@ def _public_host(url):
 def link_gone(url, timeout=15):
     """True only when the site plainly says the posting is gone (404/410, or Greenhouse's error redirect).
     Bot checks, timeouts and anything else mean "don't know" (False)."""
-    if not url or any(a in url.lower() for a in AGGREGATORS) or not _public_host(url):
+    if not link_checkable(url) or not _public_host(url):
         return False
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "text/html"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:   # noqa: S310 — public http(s) only, checked above
-            final = urllib.parse.urlparse(r.geturl() or "")
-            host = (final.hostname or "").lower()
-            greenhouse = host == "greenhouse.io" or host.endswith(".greenhouse.io")
-            return greenhouse and "error=true" in final.query
+            return link_answer_gone(200, r.geturl() or "")
     except urllib.error.HTTPError as e:
-        return e.code in (404, 410)
+        return link_answer_gone(e.code, "")
     except (urllib.error.URLError, OSError, ValueError):
         return False
+
+
+def link_checkable(url):
+    """Spec section 21: a link worth checking (not empty, not on a big job board, which blocks or keeps stale pages)."""
+    return bool(url) and not any(a in url.lower() for a in AGGREGATORS)
+
+
+def link_answer_gone(status, final_url):
+    """Spec section 21: does a page answer mean the posting is gone? 404/410, or a 2xx/3xx answer that ended on
+    Greenhouse's error redirect. Anything else means "don't know"."""
+    if status in (404, 410):
+        return True
+    if status >= 400:
+        return False
+    final = urllib.parse.urlparse(final_url or "")
+    host = (final.hostname or "").lower()
+    return (host == "greenhouse.io" or host.endswith(".greenhouse.io")) and "error=true" in final.query
 
 
 def link_check(run_id=None, limit=LINK_CHECK_MAX, checker=None):
@@ -266,6 +305,11 @@ def employer_speed():
             rows = conn.execute("SELECT lower(company), days_up FROM closures WHERE reopened_on='' AND days_up IS NOT NULL").fetchall()
     except sqlite3.OperationalError:   # not set up yet
         return {}
+    return speed_from(rows)
+
+
+def speed_from(rows):
+    """Spec section 21: [(company lower-cased, days up)] -> {company: {n, median}} (median rounded half to even)."""
     by = {}
     for c, d in rows:
         by.setdefault(c, []).append(d)
