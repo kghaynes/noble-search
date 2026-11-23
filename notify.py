@@ -123,6 +123,24 @@ def _closing_soon(exclude=()):
     return out[:8]
 
 
+def fit_parts(jobs):
+    """Spec section 22: ["2 High", "1 Med", …] for the new jobs, in High, Med, Low, unrated order (empty groups left out)."""
+    groups = (("High", "High"), ("Med", "Med"), ("Low", "Low"), ("", "unrated"))
+    return [f"{n} {label}" for fit_, label in groups for n in [sum(1 for j in jobs if (j.get("fit") or "") == fit_)] if n]
+
+
+def summary_subject(jobs, day):
+    """Spec section 22: the summary's title line. day = e.g. "Mon Nov 23"."""
+    if jobs:
+        return f"Noble Search {day}: {len(jobs)} new — " + ", ".join(fit_parts(jobs))
+    return f"Noble Search {day}: no new matches"
+
+
+def push_body(counts):
+    """Spec section 22: the short notification text."""
+    return f"{counts['new']} new · {counts['high']} High · {counts['med']} Med" if counts["new"] else "No new matches today"
+
+
 def build(run, cfg):
     """Return (subject, text, html, counts) for a run."""
     jobs = _jobs(run.get("added_keys") or [])
@@ -135,11 +153,8 @@ def build(run, cfg):
     scanned = sum(int(d.get("scanned") or 0) for d in detail)
     nsrc = len([d for d in detail if not d.get("skipped")])
     day = datetime.now().strftime("%a %b %-d")
-    if jobs:
-        parts = [f"{len(x)} {n}" for x, n in ((high, "High"), (med, "Med"), (low, "Low"), (unrated, "unrated")) if x]
-        subject = f"Noble Search {day}: {len(jobs)} new — " + ", ".join(parts)
-    else:
-        subject = f"Noble Search {day}: no new matches"
+    subject = summary_subject(jobs, day)
+    parts = fit_parts(jobs)
     url = (cfg.get("dashboard_url") or "").rstrip("/")
     skip = sources._skip_list(cfg)
 
@@ -371,7 +386,7 @@ def send_push(cfg, subject, counts):
     base, topic = (cfg.get("ntfy_url") or "").rstrip("/"), (cfg.get("ntfy_topic") or "").strip()
     if not base or not topic:
         return
-    body = f"{counts['new']} new · {counts['high']} High · {counts['med']} Med" if counts["new"] else "No new matches today"
+    body = push_body(counts)
     hdr = {"Title": subject.encode("ascii", "ignore").decode(), "Tags": "briefcase"}
     if cfg.get("dashboard_url"):
         hdr["Click"] = cfg["dashboard_url"]
