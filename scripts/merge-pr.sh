@@ -29,6 +29,16 @@ done
 state=$(gh pr view "${pr}" --json state,isDraft -q '"\(.state) \(.isDraft)"') || die "PR #${pr} not found"
 [[ "$state" == "OPEN false" ]] || die "PR #${pr} is not an open, ready PR ($state)"
 
+# A local copy of the PR's branch with commits GitHub doesn't have means a push failed (PRB-0007).
+head=$(gh pr view "${pr}" --json headRefName,headRefOid -q '"\(.headRefName) \(.headRefOid)"')
+branch=${head% *}; remote_sha=${head#* }
+if local_sha=$(git rev-parse -q --verify "refs/heads/${branch}" 2>/dev/null) && [[ "$local_sha" != "$remote_sha" ]]; then
+  git fetch -q origin "${branch}" 2>/dev/null || true
+  if ! git merge-base --is-ancestor "$local_sha" "$remote_sha" 2>/dev/null; then
+    die "local branch ${branch} has commits the PR doesn't (${local_sha:0:7} vs ${remote_sha:0:7}); push them first"
+  fi
+fi
+
 # Wait for checks to be reported (a just-pushed PR may have none yet).
 waited=0
 until [[ "$(gh pr checks "${pr}" --json name -q 'length' 2>/dev/null || echo 0)" -gt 0 ]]; do

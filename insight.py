@@ -62,6 +62,22 @@ def _show(line):
 def check(draft=None):
     cfg = _merged(draft)
     prof = ps.get_profile()
+    plan = sources.jsearch_plan(cfg, sources.Context(cfg, prof))
+    # titles the person wants: examples from ✨ Suggest titles, starred jobs, High-fit jobs
+    wanted = [(t, "example") for t in _lines(cfg.get("title_examples"))]
+    try:
+        for r in _rows("SELECT title, status, fit FROM jobs WHERE status IN (?,?,?,?) OR fit='High' LIMIT 60", WATCH):
+            wanted.append((r["title"], "starred" if r["status"] in WATCH else "High fit"))
+    except Exception:  # noqa: BLE001
+        pass
+    out = settings_check(cfg, prof, plan, wanted)
+    return {**out, "preview": preview(cfg), "plan": _plan_view(plan)}
+
+
+def settings_check(cfg, prof, plan, wanted):
+    """Spec section 20: warnings about the settings, and which wanted titles the title rules drop.
+    plan = the job-board plan (searches, rotating, total, per_run, budget); wanted = [(title, why)] where why is
+    "example", "starred" or "High fit". Returns {warnings, examples}."""
     ctx = sources.Context(cfg, prof)
     warn = []
 
@@ -82,7 +98,6 @@ def check(draft=None):
         add("info", "Only your home town counts as near home. Add the towns around you (✨ Suggest towns can fill them).")
 
     # job-board searches
-    plan = sources.jsearch_plan(cfg, ctx)
     if cfg.get("jsearch_api_key") and not plan["searches"]:
         add("warn", "Job boards are set up but there are no jobs to look for, so LinkedIn, Indeed and the other boards are skipped.")
     if plan["rotating"]:
@@ -117,16 +132,10 @@ def check(draft=None):
                 add("warn", f"The skip word “{_show(s)}” also blocks your word “{w}”, so titles with “{w}” are dropped.",
                     {"list": "title_exclude", "op": "remove", "value": s, "label": f"Remove “{_show(s)}” from skip"})
 
-    # titles the person wants: examples from ✨ Suggest titles, starred jobs, High-fit jobs
-    wanted = [(t, "example") for t in _lines(cfg.get("title_examples"))]
-    try:
-        for r in _rows("SELECT title, status, fit FROM jobs WHERE status IN (?,?,?,?) OR fit='High' LIMIT 60", WATCH):
-            wanted.append((re.sub(r"\s*\((?:GS|ES|SL|ST|GG|GM)-[^)]*\)\s*$", "", r["title"]),
-                           "starred" if r["status"] in WATCH else "High fit"))
-    except Exception:  # noqa: BLE001
-        pass
     seen, examples = set(), []
     for t, why in wanted:
+        if why != "example":
+            t = re.sub(r"\s*\((?:GS|ES|SL|ST|GG|GM)-[^)]*\)\s*$", "", t)
         if t.lower() in seen:
             continue
         seen.add(t.lower())
@@ -137,7 +146,7 @@ def check(draft=None):
     if misses:
         add("warn", f"{len(misses)} of the titles you want would be dropped by your title rules (see below).")
 
-    return {"warnings": warn, "examples": examples, "preview": preview(cfg), "plan": _plan_view(plan)}
+    return {"warnings": warn, "examples": examples}
 
 
 def _plan_view(plan):
@@ -381,15 +390,24 @@ def why_not_steps(job, cfg, prof, rows, recent):
 # --------------------------------------------------------------------------- report card
 def line_report(runs=7):
     cfg = search.get_config()
-    stats = {}
-    n_runs = 0
+    per_run = []
     for r in search.recent_runs(runs):
         js = next((d for d in r.get("detail") or [] if d.get("type") == "jsearch"), None)
-        if not js:
-            continue
+        if js:
+            per_run.append(js.get("lines") or [])
+    phrases = sources.split_search_lines(cfg.get("jsearch_what") or "")[0]
+    return search_line_report(per_run, phrases + _lines(cfg.get("jsearch_queries")))
+
+
+def search_line_report(per_run, searches):
+    """Spec section 20: how each job-board search has done. per_run = for each recent run that searched job
+    boards, its lines ({phrase, returned, kept, new, overlap}); searches = the current searches, in order."""
+    stats = {}
+    n_runs = 0
+    for lines in per_run:
         n_runs += 1
         this_run = set()
-        for l in js.get("lines") or []:   # a phrase runs as "near home" and "remote": count the run once
+        for l in lines:   # a phrase runs as "near home" and "remote": count the run once
             key = l["phrase"].lower()
             s = stats.setdefault(key, {"phrase": l["phrase"], "runs": 0, "returned": 0, "kept": 0, "new": 0})
             if key not in this_run:
@@ -397,10 +415,8 @@ def line_report(runs=7):
                 this_run.add(key)
             for k in ("returned", "kept", "new", "overlap"):
                 s[k] = s.get(k, 0) + int(l.get(k) or 0)
-    phrases = sources.split_search_lines(cfg.get("jsearch_what") or "")[0]
-    exact = _lines(cfg.get("jsearch_queries"))
     out = []
-    for p in phrases + exact:
+    for p in searches:
         s = stats.get(p.lower(), {"phrase": p, "runs": 0, "returned": 0, "kept": 0, "new": 0})
         if s["runs"] == 0:
             s["status"], s["level"] = "Not run yet", "info"
