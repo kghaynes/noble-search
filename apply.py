@@ -66,9 +66,9 @@ def build_app_prompt(profile, inventory, resume_texts, job, jd_text, questions):
         label = "CURRENT RESUME" if current and name == current else ("OLDER RESUME" if current else "EXISTING RESUME")
         parts += ["", f"# {label}: {name}", text.strip()]
     qs = questions or DEFAULT_SCREENING
-    parts += ["", "# TARGET JOB", f"Title: {job.get('title')}", f"Company: {job.get('company')}",
-              f"Location: {job.get('location')} ({job.get('work_mode')})",
-              f"Why it was flagged as a fit: {job.get('fit_reason') or 'n/a'}",
+    parts += ["", "# TARGET JOB", f"Title: {guard.field(job.get('title'))}", f"Company: {guard.field(job.get('company'))}",
+              f"Location: {guard.field(job.get('location'))} ({guard.field(job.get('work_mode'))})",
+              f"Why it was flagged as a fit: {guard.field(job.get('fit_reason') or 'n/a')}",
               "", "# JOB DESCRIPTION",
               guard.posting(jd_text.strip()[:15000]) if (jd_text or "").strip()
               else "(not available — tailor to the title and company)",

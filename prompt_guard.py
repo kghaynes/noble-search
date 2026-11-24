@@ -3,6 +3,8 @@
 Text from outside (job postings) and the candidate's free-text notes go inside marked tags, so the
 system prompts can tell the model to treat them as information and not as instructions. Copies of
 the tags inside that text are removed first, so it can't close the block early. Notes are capped.
+Short job fields (title, company, location...) sit outside the tags, so each is made one capped line
+with no tags: it can't start a new prompt section or close a block.
 """
 import re
 
@@ -10,6 +12,7 @@ POSTING_OPEN, POSTING_CLOSE = "<job_posting>", "</job_posting>"
 NOTES_OPEN, NOTES_CLOSE = "<candidate_notes>", "</candidate_notes>"
 TAG_STRIP = r"(?i)<\s*/?\s*(?:job_posting|candidate_notes)\s*>"
 NOTES_MAX_CHARS = 1000
+FIELD_MAX_CHARS = 300
 
 
 def clean(text):
@@ -20,6 +23,12 @@ def clean(text):
 def posting(text):
     """A job posting, already cut to its length limit, as a tagged block."""
     return f"{POSTING_OPEN}\n{clean(text).strip()}\n{POSTING_CLOSE}"
+
+
+def field(value):
+    """One job field on one line: str(value) as before (None stays "None"), guard tags removed,
+    runs of whitespace (line breaks included) made one space, cut to FIELD_MAX_CHARS."""
+    return " ".join(clean(str(value)).split())[:FIELD_MAX_CHARS]
 
 
 def notes(text):

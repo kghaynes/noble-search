@@ -96,11 +96,11 @@ def job_prompt(job):
     desc = (job.get("description") or "").strip()
     return "\n".join([
         "# JOB",
-        f"Title: {job.get('title')}",
-        f"Company: {job.get('company')}",
-        f"Location: {job.get('location')} ({job.get('work_mode') or 'n/a'})",
-        f"Pay: {job.get('salary') or 'not listed'}",
-        f"Clearance: {job.get('clearance') or 'not listed'}",
+        f"Title: {guard.field(job.get('title'))}",
+        f"Company: {guard.field(job.get('company'))}",
+        f"Location: {guard.field(job.get('location'))} ({guard.field(job.get('work_mode') or 'n/a')})",
+        f"Pay: {guard.field(job.get('salary') or 'not listed')}",
+        f"Clearance: {guard.field(job.get('clearance') or 'not listed')}",
         "", "# JOB DESCRIPTION",
         guard.posting(desc[:9000]) if desc else "(No description available. Rate from the title and company only, and say so in the reason.)",
         "", "Return the JSON now."])

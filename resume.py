@@ -141,12 +141,12 @@ def build_resume_prompt(profile, inventory, resume_texts, job, jd_text, template
         parts += ["", f"# {'OLDER' if current else 'EXISTING'} RESUME — {name}"
                       + (" (use only for facts; do not copy its structure or wording)" if current else ""), text.strip()]
     parts += ["", "# TARGET JOB",
-              f"Title: {job.get('title')}",
-              f"Company: {job.get('company')}",
-              f"Location: {job.get('location')} ({job.get('work_mode')})",
-              f"Clearance noted: {job.get('clearance') or 'n/a'}",
-              f"Role lane: {job.get('lane') or 'n/a'}",
-              f"Why it was flagged as a fit: {job.get('fit_reason') or 'n/a'}",
+              f"Title: {guard.field(job.get('title'))}",
+              f"Company: {guard.field(job.get('company'))}",
+              f"Location: {guard.field(job.get('location'))} ({guard.field(job.get('work_mode'))})",
+              f"Clearance noted: {guard.field(job.get('clearance') or 'n/a')}",
+              f"Role lane: {guard.field(job.get('lane') or 'n/a')}",
+              f"Why it was flagged as a fit: {guard.field(job.get('fit_reason') or 'n/a')}",
               "", "# JOB DESCRIPTION",
               guard.posting(jd_text.strip()[:15000]) if (jd_text or "").strip()
               else "(not available — tailor to the title and company above)",
