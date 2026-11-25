@@ -509,6 +509,9 @@ class Context:
                 self.places.append((_norm(name), st.strip().upper()[:2], a))
         self.detail_cap = int(cfg.get("detail_cap") or 60)
         self.max_pages = int(cfg.get("max_pages") or 150)
+        # USAJOBS hiring paths beyond the public one (spec section 24): veterans, Guard/Reserve, disability
+        import military
+        self.hiring_paths = military.derive(profile, date.today())["hiring_paths"]
         self.log = []
         # optional record of every title checked (for "Why didn't I see this job?"); search.run turns it on
         self.recording, self.source, self.seen, self._cur, self._per_source = False, "", [], None, {}
@@ -1445,13 +1448,20 @@ def usajobs_queries(cfg, ctx):
     elif mode in ("agencies", "all"):
         queries.append({"PayGradeLow": f"{max(1, min_grade - 1):02d}", "_nationwide": True})
         queries.append({"JobGradeCode": "ES;SL;ST", "_nationwide": True})   # SES-type jobs carry grade "00"
+    # Spec section 24: when the person qualifies for other hiring paths, each search also runs once for those
+    # paths (results are merged by position), so jobs open only to veterans or Guard/Reserve members show up.
+    paths = [x for x in getattr(ctx, "hiring_paths", []) if x != "public"]
+    if paths:
+        queries += [{**q, "_hiring_path": ";".join(paths)} for q in queries]
     return queries, " ".join(notes)
 
 
 def usajobs_params(q, max_age_days, page):
-    """The query string parameters for one page of one query."""
+    """The query string parameters for one page of one query. A hiring-path query asks for those paths instead
+    of WhoMayApply=public (spec section 24)."""
+    who = {"HiringPath": q["_hiring_path"]} if q.get("_hiring_path") else {"WhoMayApply": "public"}
     return {**{k: v for k, v in q.items() if not k.startswith("_")}, "DatePosted": min(max_age_days, USAJOBS_MAX_DAYS),
-            "ResultsPerPage": USAJOBS_PAGE_SIZE, "Page": page, "WhoMayApply": "public"}
+            "ResultsPerPage": USAJOBS_PAGE_SIZE, "Page": page, **who}
 
 
 def usajobs_listing(d, q, cfg, ctx):

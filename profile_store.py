@@ -42,16 +42,31 @@ PROFILE_DEFAULTS = {
     "mil_rank": "",         # highest rank / pay grade, e.g. Colonel (O-6), Master Sergeant (E-8)
     "mil_codes": "",        # MOS / AFSC / NEC / rating / designator codes, one per line, e.g. 25A Signal Officer
     "mil_skill_ids": "",    # ASI / SQI / SI / special qualifications, schools, badges
+    # more military background (spec section 24)
+    "mil_status": "",           # active | reserve | guard | retired | separated | transitioning
+    "mil_entry_date": "",       # YYYY-MM
+    "mil_separation_date": "",  # YYYY-MM, past or planned
+    "mil_highest_position": "",  # e.g. Deputy Commanding Officer, Army NETCOM
+    "mil_largest_org": "",      # e.g. 5,000 people, $1.2B budget, 40 sites
+    "mil_education": "",        # professional military education, one per line
+    "mil_joint": "",            # e.g. Joint Qualified Officer
+    "mil_8140": "",             # DoD 8140/8570 cyber workforce roles, one per line
+    "mil_certs": "",            # military-earned certifications, one per line
+    "mil_languages": "",        # one per line, e.g. Arabic (DLPT 2/2)
+    "clearance_level": "",      # e.g. TS/SCI; when set, `clearance` is written from these four fields
+    "clearance_poly": "",       # "" | ci | full
+    "clearance_investigation": "",  # YYYY-MM of the last investigation
+    "clearance_status": "",     # "" | active | current | expired
+    # federal hiring: never sent to the AI, only chooses USAJOBS hiring paths
+    "vet_preference": "",       # "" | 5 | 10
+    "disability_30": "",        # "true" when 30% or more
 }
 
 
 def military_text(p):
-    """Plain-text military background block for AI prompts ('' if none given)."""
-    lines = [f"{lbl}: {str(p.get(k) or '').strip()}" for k, lbl in (
-        ("mil_branch", "Branch"), ("mil_rank", "Highest rank / pay grade"),
-        ("mil_codes", "Occupation codes (MOS/AFSC/NEC/designator)"),
-        ("mil_skill_ids", "Skill identifiers, qualifications, schools")) if str(p.get(k) or "").strip()]
-    return "\n".join(lines)
+    """Plain-text military background block for AI prompts ('' if none given). See military.py."""
+    import military
+    return military.military_text(p)
 
 SETTINGS_DEFAULTS = {
     "provider": "anthropic",  # anthropic | ollama
@@ -113,6 +128,9 @@ def save_profile(data):
                 else:
                     v = str(v)[:5000]
                 cur[k] = v
+        if str(cur.get("clearance_level") or "").strip():   # structured clearance wins (spec section 24)
+            import military
+            cur["clearance"] = military.clearance_text(cur)
         _write_json(PROFILE_JSON, cur)
         return cur
 

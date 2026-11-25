@@ -854,6 +854,19 @@ const RANKS = {
 };
 const CIV = ['GS-9','GS-10','GS-11','GS-12','GS-13','GS-14','GS-15','Senior Executive Service (SES)','Senior Level / Scientific & Professional (SL/ST)'];
 function branchKey(b){ const r = MIL_BRANCHES.find(x=>x[0]===b); return r ? r[1] : ''; }
+/** What can be worked out from the military fields (spec section 24). */
+function milSuggest(m){
+  if(!m) return '';
+  const rows = [];
+  if(m.civilian_level) rows.push(`<li>Civilian level: <b>${esc(m.civilian_level)}</b></li>`);
+  if(m.gs_equivalent) rows.push(`<li>About GS-${m.gs_equivalent} (a starting point for the USAJOBS minimum grade)</li>`);
+  if(m.service_years) rows.push(`<li>Service: ${esc(m.service_years)}</li>`);
+  if(m.clearance_wording) rows.push(`<li>Clearance on resumes: <b>${esc(m.clearance_wording)}</b>${m.clearance_note?` — ${esc(m.clearance_note)}`:''}</li>`);
+  if(m.skillbridge) rows.push(`<li>${esc(m.skillbridge)}</li>`);
+  if(m.vra) rows.push(`<li>Within 3 years of separation: Veterans Recruitment Appointment (VRA) may apply.</li>`);
+  if(m.hiring_paths && m.hiring_paths.length) rows.push(`<li>USAJOBS also searches: ${m.hiring_paths.map(p=>({vet:'veterans',nguard:'National Guard & Reserves',disability:'individuals with disabilities'})[p]||p).join(', ')}</li>`);
+  return rows.length ? `<div class="ver" style="margin-top:12px"><div class="vh"><b>Worked out from your service</b><span class="hint">after Save</span></div><ul>${rows.join('')}</ul></div>` : '';
+}
 function branchOptions(cur){
   const known = MIL_BRANCHES.some(x=>x[0]===cur);
   return `<option value="">Choose…</option>` + MIL_BRANCHES.map(([n])=>`<option ${n===cur?'selected':''}>${esc(n)}</option>`).join('')
@@ -888,6 +901,8 @@ async function renderProfile(){
   const homeNote = () => `<span id="homeNote">${homeNoteHTML(d.home_read)}</span>`;
   const f = (k,l,t) => t==='ta' ? `<label class="fld full">${l}<textarea data-pf="${k}"${k==='notes'?' maxlength="1000"':''}>${esc(d.profile[k])}</textarea></label>`
                                 : `<label class="fld">${l}<input data-pf="${k}" value="${esc(d.profile[k])}" ${k==='home_location'?'placeholder="Melbourne, FL"':''}>${k==='home_location'?homeNote():''}</label>`;
+  const sel = (k,l,opts) => `<label class="fld">${l}<select data-pf="${k}">${Object.entries(opts).map(([v,t])=>`<option value="${esc(v)}"${String(d.profile[k]||'')===v?' selected':''}>${esc(t)}</option>`).join('')}</select></label>`;
+  const mon = (k,l) => `<label class="fld">${l}<input type="month" data-pf="${k}" value="${esc(d.profile[k]||'')}"></label>`;
   const inv = d.inventory_drafts && d.inventory_drafts[0];
   v.innerHTML = `<div class="page">
     <section class="box"><h2>Contact & basics</h2><div class="hint">Printed at the top of every draft. Kept on this server only.</div>
@@ -921,7 +936,32 @@ async function renderProfile(){
           <input class="inp" id="milRankOther" placeholder="Type your rank and pay grade, e.g. Colonel (O-6)" style="margin-top:6px" hidden></label>
         ${f('mil_codes','Occupation codes — MOS / AFSC / NEC / rating / designator (one per line, with titles)','ta')}
         ${f('mil_skill_ids','Skill identifiers, special qualifications, key schools (ASI, SQI, SI, certifications)','ta')}
+        ${sel('mil_status','Service status',{'':'Not set',active:'Active duty',reserve:'Reserve',guard:'National Guard',retired:'Retired',separated:'Separated (veteran)',transitioning:'Transitioning (separation date set)'})}
+        ${mon('mil_entry_date','Entered service')}
+        ${mon('mil_separation_date','Separation or retirement (past or planned)')}
+        ${f('mil_highest_position','Highest leadership position, e.g. Deputy Commanding Officer, Army NETCOM')}
+        ${f('mil_largest_org','Largest organization led: people, budget, equipment, sites')}
+        ${f('mil_joint','Joint qualification, e.g. Joint Qualified Officer')}
+        ${f('mil_education','Professional military education, one per line (e.g. Army War College, 2015)','ta')}
+        ${f('mil_8140','DoD 8140/8570 cyber workforce roles, one per line (e.g. IAM Level III)','ta')}
+        ${f('mil_certs','Military-earned certifications, one per line','ta')}
+        ${f('mil_languages','Languages, one per line (e.g. Arabic, DLPT 2/2)','ta')}
       </div>
+      <h3 style="margin-top:14px">Clearance</h3>
+      <div class="hint">When a level is set, these four fields write the clearance shown on drafts.</div>
+      <div class="grid2">
+        ${f('clearance_level','Level, e.g. TS/SCI')}
+        ${sel('clearance_poly','Polygraph',{'':'None',ci:'CI',full:'Full-scope'})}
+        ${mon('clearance_investigation','Last investigation')}
+        ${sel('clearance_status','Status',{'':'Work it out from service dates',active:'Active',current:'Current (inactive, can be reinstated)',expired:'Expired'})}
+      </div>
+      <h3 style="margin-top:14px">Federal hiring</h3>
+      <div class="hint">Never sent to the AI. Only used to also search USAJOBS jobs open to veterans, Guard/Reserve members or people with disabilities.</div>
+      <div class="grid2">
+        ${sel('vet_preference',"Veterans' preference",{'':'None','5':'5-point','10':'10-point'})}
+        ${sel('disability_30','Service-connected disability rating 30% or more',{'':'No',true:'Yes'})}
+      </div>
+      ${milSuggest(d.military)}
       <div class="row" style="margin-top:12px"><button class="btn primary" data-act="p_save">Save</button>
         <span class="hint">Then use <b>✨ Suggest titles</b> on the Search page.</span></div></section>
 

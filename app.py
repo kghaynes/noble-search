@@ -388,8 +388,10 @@ class Handler(BaseHTTPRequestHandler):
                                     "setup": setup_state(bool(runs)), "progress": progress()})
         qs = parse_qs(urlparse(self.path).query)
         if path == "/profile":
+            import military
             return self._json(200, {"profile": ps.get_profile(), "resumes": ps.list_resumes(),
                                     "home_read": sources.home_town(ps.get_profile()),
+                                    "military": military.derive(ps.get_profile(), datetime.now().date()),
                                     "inventory": ps.get_inventory(),
                                     "inventory_drafts": drafts.list_for(drafts.PROFILE_KEY)[:3]})
         if path == "/settings/log":
