@@ -11,6 +11,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Pt, RGBColor
 import prompt_guard as guard
+from career_inventory import CERTS_LABEL, INVENTORY_GAPS_HEADING, certifications_line
 
 ACCENT = "1E3764"          # navy used in the source resume
 HEADING_FILL = "F2F2F2"    # light gray section band
@@ -105,7 +106,7 @@ RESUME_SYSTEM = """You are an expert executive resume writer who specializes in 
 Write a tailored two-page resume for ONE specific job, using ONLY facts from the candidate's source material.
 
 Hard rules:
-1. TRUTH: never invent employers, titles, dates, degrees, certifications, clearances, numbers, percentages, dollar amounts, headcounts or outcomes. Every number you write must appear in the source material. If the job wants something the candidate lacks, do NOT claim it — list it under notes_for_candidate as a gap.
+1. TRUTH: never invent employers, titles, dates, degrees, certifications, clearances, numbers, percentages, dollar amounts, headcounts or outcomes. Every number you write must appear in the source material. If the job wants something the candidate lacks, do NOT claim it — list it under notes_for_candidate as a gap. Certifications, degrees and clearances the candidate lists (including the \"""" + CERTS_LABEL + """\" line) are held: use them where they help, and never list one of them as missing or as a gap. Never add one that is not listed. The career inventory's \"""" + INVENTORY_GAPS_HEADING + """\" section holds open questions for the candidate, not things the candidate lacks.
 2. TRANSLATE: express military roles in civilian terms (e.g. "Deputy Commanding Officer (Chief Operating Officer)"), replace military jargon and acronyms with plain business language unless the employer is defense/government and the acronym is standard there.
 3. TAILOR: select, reorder and rephrase the candidate's real accomplishments to match the job's priorities and vocabulary. Lead with what this employer cares about most.
 4. ATS: plain text only — no emojis, no special symbols, no tables. Standard section names. Dates as "Mon YYYY - Mon YYYY".
@@ -122,6 +123,7 @@ def build_resume_prompt(profile, inventory, resume_texts, job, jd_text, template
              f"Name: {profile.get('full_name')}",
              f"Location: {profile.get('city_state')}",
              f"Clearance: {profile.get('clearance') or 'not specified'}"]
+    parts += certifications_line(inventory, profile)   # spec section 7.1: what the candidate holds, up front
     prefs = [(lbl, profile.get(k, "")) for k, lbl in (("levels", "Target levels"), ("lanes", "Target role lanes"))]
     prefs = [f"{lbl}: {v}" for lbl, v in prefs if str(v).strip()]
     if prefs:

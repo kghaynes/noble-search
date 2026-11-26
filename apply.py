@@ -6,6 +6,7 @@ with a character count and a copy button; the candidate pastes and submits.
 """
 import re
 import prompt_guard as guard
+from career_inventory import CERTS_LABEL, INVENTORY_GAPS_HEADING, certifications_line
 
 FIELD_LIMIT = 2000  # common Workday limit for free-text boxes; shown as a warning only
 
@@ -17,6 +18,16 @@ DEFAULT_SCREENING = [
     "Are you willing to relocate or travel?",
     "What are your salary expectations?",
 ]
+
+SCREENING_MAX_QUESTIONS = 25   # more than this and the rest are left out, silently (spec application.json)
+
+
+def screening_questions(text):
+    """Spec section 7.2: the form's questions as pasted -> the list the application prompt asks. One question
+    per line (Python str.splitlines line breaks), each trimmed, empty lines dropped, the first
+    SCREENING_MAX_QUESTIONS kept; the rest are dropped without a message. No per-question length limit."""
+    return [q.strip() for q in str(text or "").splitlines() if q.strip()][:SCREENING_MAX_QUESTIONS]
+
 
 APP_SCHEMA = """{
   "summary": "Professional summary for a 'Summary' or 'About you' box: 3-5 sentences, 500-1,000 characters, tailored to this job",
@@ -38,7 +49,7 @@ APP_SCHEMA = """{
 APP_SYSTEM = """You help a senior military/government leader apply to a civilian job. You write the text he will paste into an online application form (Workday style).
 
 Hard rules:
-1. TRUTH: use only facts from the candidate material. Never invent employers, titles, dates, numbers, certifications, clearances or outcomes. If the posting wants something he lacks, do not claim it; mention it in notes_for_candidate.
+1. TRUTH: use only facts from the candidate material. Never invent employers, titles, dates, numbers, certifications, clearances or outcomes. If the posting wants something he lacks, do not claim it; mention it in notes_for_candidate. Certifications, degrees and clearances listed in the candidate material (including the \"""" + CERTS_LABEL + """\" line) are held: use them, and never report one of them as missing or as a gap. Never add one that is not listed. The career inventory's \"""" + INVENTORY_GAPS_HEADING + """\" section holds open questions for him, not things he lacks.
 2. TRANSLATE military roles and jargon into civilian business language (e.g. Deputy Commanding Officer = Chief Operating Officer), unless the employer is defense/government and the acronym is standard there.
 3. TAILOR every field to this job's priorities and vocabulary.
 4. PLAIN TEXT: no markdown, no emojis, no special symbols. Dates as MM/YYYY.
@@ -53,6 +64,7 @@ Return ONLY a JSON object matching this schema (no commentary, no markdown fence
 def build_app_prompt(profile, inventory, resume_texts, job, jd_text, questions):
     parts = ["# CANDIDATE", f"Name: {profile.get('full_name')}", f"Location: {profile.get('city_state')}",
              f"Clearance: {profile.get('clearance') or 'not specified'}"]
+    parts += certifications_line(inventory, profile)   # spec section 7.2: what the candidate holds, up front
     for k, lbl in (("levels", "Target levels"), ("lanes", "Target role lanes"), ("work_modes", "Work modes"),
                    ("employment_types", "Employment types")):
         if str(profile.get(k) or "").strip():

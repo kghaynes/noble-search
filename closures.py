@@ -53,6 +53,30 @@ def keep_rule(job, today, keep_days=KEEP_DAYS):
         return {"from": ref, "remove_on": None, "remove": False}
     remove_on = start + timedelta(days=keep_days + 1)
     return {"from": ref, "remove_on": remove_on.isoformat(), "remove": today >= remove_on}
+
+
+def library_view(draft_list, jobs, today, keep_days=KEEP_DAYS):
+    """Spec section 25: the drafts library. draft_list = drafts newest first (each with job_key); jobs = {job_key:
+    job}. One entry per job that has drafts and is still stored, in the order its newest draft appears, then
+    sorted by days left (fewest first, stable), jobs with no removal date (watchlist or no readable date) last.
+    expires = keep_rule's remove_on; days_left = expires - today in days (None without a date); kept = watched."""
+    by_job = {}
+    for d in draft_list:
+        by_job.setdefault(d["job_key"], []).append(d)
+    out = []
+    for key, ds in by_job.items():
+        j = jobs.get(key)
+        if not j:
+            continue
+        exp = keep_rule(j, today, keep_days)["remove_on"]
+        days_left = (date.fromisoformat(exp) - today).days if exp else None
+        out.append({"job_key": key, "title": j.get("title"), "company": j.get("company"), "status": j.get("status") or "",
+                    "link": j.get("link"), "expires": exp, "days_left": days_left,
+                    "kept": j.get("status") in WATCH, "drafts": ds})
+    out.sort(key=lambda x: (x["days_left"] is None, x["days_left"] if x["days_left"] is not None else 0))
+    return out
+
+
 DETECTED_BY = {"employer": "Taken down from the employer's hiring site",
                "usajobs": "Removed from USAJOBS",
                "link": "The posting link no longer works",

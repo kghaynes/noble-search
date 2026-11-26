@@ -5,7 +5,6 @@ model; or a local Ollama model). The candidate's profile + career inventory go i
 system prompt, which stays identical from job to job so it can be cached (cheaper, faster).
 Only unrated jobs are rated automatically; "Re-rate" on a card forces one, on the drafts model.
 """
-import re
 import threading
 import time
 from datetime import datetime, timezone
@@ -15,6 +14,10 @@ import applog
 import llm
 import profile_store as ps
 import prompt_guard as guard
+# The "Certifications held" line is shared with the resume and application prompts (SPEC sections 5 and 7).
+from career_inventory import (CERTS_LABEL, CERTS_MAX_ITEMS, CERTS_ITEM_MAX_CHARS, CERTS_NOTE_MAX_WORDS,  # noqa: F401
+                              CERTS_NOTE_PERIOD_MIN_WORDS, CERTS_NONE, CERTS_SEPARATOR, _BULLET_RE, _cert_item,
+                              certifications_held, certifications_line, inventory_section, INVENTORY_GAPS_HEADING)
 
 LANES_DEFAULT = ["Tech/Cyber", "Operations", "Defense prime", "Space", "Other"]
 _state = {"running": False, "done": 0, "total": 0, "current": "", "errors": 0, "last_error": "", "provider": ""}
@@ -50,16 +53,6 @@ BASE_RESUMES_ASK = ('Also include in the JSON "best_resume": the exact name of t
 BASE_RESUME_PREVIEW_CHARS = 400
 BEST_RESUME_WHY_MAX = 150
 
-# "Certifications held" line (spec fit.json "certifications"; SPEC section 5): the certifications the candidate
-# lists, in one place near the top, so a small model doesn't miss them deep in a long inventory.
-CERTS_LABEL = "Certifications held"
-CERTS_MAX_ITEMS = 20
-CERTS_ITEM_MAX_CHARS = 120
-CERTS_NOTE_MAX_WORDS = 12          # a line with more words than this is a note, not a certification
-CERTS_NOTE_PERIOD_MIN_WORDS = 3    # a line ending in "." with at least this many words is a note too
-CERTS_NONE = ("none", "none listed", "not listed", "none provided", "n/a")
-_BULLET_RE = re.compile(r"^(?:[-*+•]|\d+[.)])\s+")
-
 # A rating the person asks for on one job (Rate / Re-rate on a job, or after pasting a description) runs on
 # the draft tier's model; bulk and automatic ratings run on the fit tier (spec fit.json "manual_rerate_tier").
 MANUAL_RERATE_TIER = "draft"
@@ -83,43 +76,11 @@ def status():
     return dict(_state)
 
 
-def _cert_item(line):
-    """One certification from one line, or '' for a blank, sub-heading, note or 'none' line."""
-    t = line.strip()
-    if not t or t.startswith("#"):
-        return ""
-    t = _BULLET_RE.sub("", t).replace("**", "").replace("__", "")
-    t = " ".join(t.split())
-    words = len(t.split())
-    if (not t or words > CERTS_NOTE_MAX_WORDS or (t.endswith(".") and words >= CERTS_NOTE_PERIOD_MIN_WORDS)
-            or t.rstrip(".").casefold() in CERTS_NONE):
-        return ""
-    return t[:CERTS_ITEM_MAX_CHARS].strip()
-
-
-def certifications_held(inventory, profile):
-    """Spec section 5: certifications from the inventory's Certifications section, then the profile's
-    military-earned certifications (one per line). Bullets and bold removed, notes skipped, duplicates
-    (ignoring case) dropped keeping the first spelling, at most CERTS_MAX_ITEMS."""
-    lines = str(inventory or "").split("\n")
-    sec = drafts.inventory_section(lines, drafts.INVENTORY_CERTS_HEADING)
-    src = (lines[sec[0] + 1:sec[1]] if sec else []) + str((profile or {}).get("mil_certs") or "").splitlines()
-    out, seen = [], set()
-    for line in src:
-        item = _cert_item(line)
-        if item and item.casefold() not in seen:
-            seen.add(item.casefold())
-            out.append(item)
-            if len(out) >= CERTS_MAX_ITEMS:
-                break
-    return out
-
-
 def fit_inventory(text):
     """Spec section 5: the inventory as the fit rating sees it, without the 'Gaps / to fill in' section
     (open questions for the candidate, not facts). Unchanged when there is no such heading."""
     lines = str(text or "").split("\n")
-    sec = drafts.inventory_section(lines, drafts.INVENTORY_GAPS_HEADING)
+    sec = inventory_section(lines, INVENTORY_GAPS_HEADING)
     if not sec:
         return text
     return "\n".join(lines[:sec[0]] + lines[sec[1]:])
@@ -137,9 +98,7 @@ def system_prompt(profile, inventory, resume_texts):
     lane_list = LANES_DEFAULT if not lanes else lanes + ["Other"]
     parts = [FIT_SYSTEM.replace("one of LANES", "one of " + ", ".join(f'"{l}"' for l in lane_list)), "",
              "# CANDIDATE", f"Clearance: {profile.get('clearance') or 'not specified'}"]
-    certs = certifications_held(inventory, profile)
-    if certs:
-        parts.append(f"{CERTS_LABEL}: " + "; ".join(certs))
+    parts += certifications_line(inventory, profile)
     for k, lbl in (("levels", "Target levels"), ("lanes", "Target role lanes"), ("home_location", "Home"),
                    ("work_modes", "Work modes"), ("employment_types", "Employment types")):
         if str(profile.get(k) or "").strip():
@@ -219,12 +178,34 @@ def rate_job(settings, provider, system, job, resume_names=(), manual=False):
     raise last or llm.LLMError("No rating")
 
 
+# Automatic rating (spec fit.json "auto_rating"; SPEC section 5). The search setting `fit_provider` picks the
+# model ("anthropic" default, "ollama", or "off" = no automatic or bulk rating). The backlog is every unrated job
+# that isn't dismissed, newest first; one run rates all of it, one job at a time.
+BACKLOG_START_DELAY_SECONDS = 60          # after the app starts (after the cleanup), the backlog is rated once
+STOP_RUN_ERRORS = ("Cannot reach", "No Claude API key")   # the model is down: stop the run, keep the rest unrated
+
+
+def is_unrated(job):
+    """Spec section 5: a job the backlog rates — no fit yet and not dismissed."""
+    return not str(job.get("fit") or "") and str(job.get("status") or "") != "dismissed"
+
+
+def backlog(jobs):
+    """Spec section 5: the keys of the jobs a backlog run rates, in order: unrated, not dismissed, sorted by
+    posted date (else last seen) newest first; jobs with neither date last. Equal dates keep the given order."""
+    def when(j):
+        return str(j.get("posted_date") or "") or j.get("last_seen")
+    todo = [j for j in jobs if is_unrated(j)]
+    dated = sorted([j for j in todo if when(j) is not None], key=lambda j: str(when(j)), reverse=True)
+    return [j["job_key"] for j in dated + [j for j in todo if when(j) is None]]
+
+
 def pending_keys():
     db_fn, lock = _db
     with lock, db_fn() as conn:
-        rows = conn.execute("""SELECT job_key FROM jobs WHERE COALESCE(fit,'')='' AND COALESCE(status,'')!='dismissed'
-                               ORDER BY COALESCE(NULLIF(posted_date,''), last_seen) DESC""").fetchall()
-    return [r[0] for r in rows]
+        rows = [dict(r) for r in conn.execute(
+            "SELECT job_key, fit, status, posted_date, last_seen FROM jobs ORDER BY rowid")]
+    return backlog(rows)
 
 
 def run(keys=None, provider=None, force=False, manual=False):
@@ -260,7 +241,7 @@ def run(keys=None, provider=None, force=False, manual=False):
                 _state["errors"] += 1
                 _state["last_error"] = str(e)[:300]
                 applog.warn("fit", f"Couldn't rate “{job.get('title')}” ({job.get('company')}): {e}")
-                if isinstance(e, llm.LLMError) and ("Cannot reach" in str(e) or "No Claude API key" in str(e)):
+                if isinstance(e, llm.LLMError) and any(s in str(e) for s in STOP_RUN_ERRORS):
                     break  # the model is down; no point trying the rest
                 continue
             with lock, db_fn() as conn:

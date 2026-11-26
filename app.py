@@ -19,6 +19,7 @@ from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+import apply
 import drafts
 import fit
 import llm
@@ -301,30 +302,16 @@ def jsearch_publishers():
 
 
 def drafts_library():
-    """Every job that has drafts, with its drafts and when it will be removed."""
-    today = datetime.now(timezone.utc).date()
-    by_job = {}
-    for d in drafts.list_all():
-        by_job.setdefault(d["job_key"], []).append(d)
-    if not by_job:
+    """Every job that has drafts, with its drafts and when it will be removed (closures.library_view)."""
+    ds = drafts.list_all()
+    if not ds:
         return {"jobs": [], "retention_days": MAX_AGE_DAYS}
+    keys = sorted({d["job_key"] for d in ds})
     with _db_lock, db() as conn:
-        keys = list(by_job)
         jobs = {r["job_key"]: dict(r) for r in conn.execute(
             f"SELECT job_key, title, company, status, posted_date, last_seen, first_seen, link FROM jobs "
             f"WHERE job_key IN ({','.join('?' * len(keys))})", keys)}
-    out = []
-    for key, ds in by_job.items():
-        j = jobs.get(key)
-        if not j:
-            continue
-        exp = expires_on(j)
-        days_left = (datetime.fromisoformat(exp).date() - today).days if exp else None
-        out.append({"job_key": key, "title": j["title"], "company": j["company"], "status": j["status"] or "",
-                    "link": j["link"], "expires": exp, "days_left": days_left,
-                    "kept": j["status"] in WATCH_STATUSES, "drafts": ds})
-    out.sort(key=lambda x: (x["days_left"] is None, x["days_left"] if x["days_left"] is not None else 0))
-    return {"jobs": out, "retention_days": MAX_AGE_DAYS}
+    return {"jobs": closures.library_view(ds, jobs, _today(), MAX_AGE_DAYS), "retention_days": MAX_AGE_DAYS}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -572,7 +559,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not conn.execute("SELECT 1 FROM jobs WHERE job_key=?", (key,)).fetchone():
                     raise ValueError("unknown job")
             kind = data.get("kind") if data.get("kind") in ("resume", "application") else "resume"
-            qs = [q.strip() for q in str(data.get("questions") or "").splitlines() if q.strip()][:25]
+            qs = apply.screening_questions(data.get("questions"))
             extra = {"questions": qs} if qs else {}
             tpl = str(data.get("template") or "")
             if tpl:
@@ -640,8 +627,8 @@ def main():
     threading.Thread(target=updates.loop, daemon=True).start()
     threading.Thread(target=search.scheduler_loop, args=(LISTING_FIELDS,), daemon=True).start()
 
-    def rate_backlog():  # rate anything left unrated (e.g. after an upgrade or restart)
-        time.sleep(60)
+    def rate_backlog():  # rate anything left unrated (e.g. after an upgrade or restart); spec section 5
+        time.sleep(fit.BACKLOG_START_DELAY_SECONDS)
         try:
             purge_expired()
         except Exception as exc:  # noqa: BLE001
