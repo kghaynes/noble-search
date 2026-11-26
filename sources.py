@@ -1865,6 +1865,34 @@ def linkedin_only(sources_text):
     return bool(parts) and all(s == LINKEDIN_SOURCE for s in parts)
 
 
+# what the one-time cleanup (after upgrading to the LinkedIn rules) empties on a watched LinkedIn-only job
+LINKEDIN_CLEARED = ("location", "work_mode", "employment_type", "posted_date", "closing_date", "salary", "clearance",
+                    "description", "fit_reason", "link")
+
+
+def linkedin_cleanup_action(job, watch):
+    """SPEC section 26: the one-time cleanup's decision for a stored job (sources, status, link).
+    keep: not LinkedIn-only. remove (with its drafts): LinkedIn-only and not on the watchlist (status not in watch).
+    reduce: LinkedIn-only and watched; set = the fields to write (details emptied, the link moved to linkedin_link)."""
+    if not linkedin_only(job.get("sources")):
+        return {"action": "keep", "set": {}}
+    if job.get("status") not in watch:
+        return {"action": "remove", "set": {}}
+    return {"action": "reduce", "set": {**{f: "" for f in LINKEDIN_CLEARED}, "linkedin_link": job.get("link") or ""}}
+
+
+def linkedin_view(job, on):
+    """SPEC section 26: a stored job as the list shows it. LinkedIn off: a LinkedIn-only job is hidden (None) and no job
+    shows its LinkedIn link. Every shown job gets linkedin_only."""
+    only = linkedin_only(job.get("sources"))
+    if not on and only:
+        return None
+    out = dict(job, linkedin_only=only)
+    if not on:
+        out["linkedin_link"] = ""
+    return out
+
+
 def jsearch_row(ctx, x, w, skip=()):
     city = ", ".join(filter(None, [x.get("job_city"), x.get("job_state")]))
     loc = city or x.get("job_location") or ""

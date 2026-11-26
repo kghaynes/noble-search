@@ -5,6 +5,7 @@ All notable changes are listed here. Versions follow [semantic versioning](https
 ## [Unreleased]
 
 ### Changed
+- How a job found again is merged with the stored one (`search.merge_job`) and the LinkedIn rules for stored jobs (`sources.linkedin_cleanup_action`, `sources.linkedin_view`, `search.LINKEDIN_PASTE`) are now pure functions and part of the shared spec (section 26), so the Apple app follows the same rules. No change in behavior.
 - The 30-day cleanup rule (how long a job stays in your list, with its drafts, unless you marked it Interested, Applied, Interviewing or Offer) now lives in `closures.keep_rule` and is part of the shared spec (section 25), so the Apple app follows the same rule. No change in behavior, except that a job whose date can't be read is now always kept.
 
 ### Added

@@ -225,6 +225,8 @@ def save_config(new):
 LINKEDIN_NOTICE = ("LinkedIn does not permit this application to show the description or details of its jobs — only "
                    "the title, the company and a link to the posting. To use a LinkedIn job in the resume and keyword "
                    "check, open it on LinkedIn, copy the description, and paste it into Resume & apply.")
+# what "Fetch posting" answers for a job known only from LinkedIn (SPEC section 26)
+LINKEDIN_PASTE = LINKEDIN_NOTICE.split(" — ")[0] + ". Open the posting on LinkedIn, copy the description, and paste it here."
 
 
 def set_linkedin(on, confirmed=False):
@@ -311,6 +313,58 @@ def _meta_set(conn, k, v):
     conn.execute("INSERT INTO meta(k, v) VALUES(?, ?) ON CONFLICT(k) DO UPDATE SET v=excluded.v", (k, v))
 
 
+def job_key(row):
+    """One stored job per employer and title: "company|title", trimmed and lower-cased (SPEC section 26)."""
+    return f"{row['company']}|{row['title']}".strip().lower()
+
+
+def merge_job(existing, row, listing_fields, today, cutoff):
+    """SPEC section 26: what one search result does to the stored jobs (no I/O).
+    existing: the stored job with the same key (dict) or None. today / cutoff: "YYYY-MM-DD" (cutoff = today − MAX_AGE_DAYS).
+    Returns {key, action: "skip" | "add" | "update", why, set: {field: value}, updated, reopen}. For "add", set holds every
+    listing field plus first_seen / last_seen; for "update", only the fields that change plus last_seen. updated is true
+    when any listing field changes. reopen: a closed job listed again reopens (section 21)."""
+    key = job_key(row)
+    out = {"key": key, "action": "skip", "why": "", "set": {}, "updated": False, "reopen": False}
+    if key == "|":
+        out["why"] = "no company or title"
+        return out
+    if existing is None:
+        if row.get("posted_date") and row["posted_date"][:10] < cutoff:
+            out["why"] = "posted before the window"   # already past the window — don't add (or re-add) it
+            return out
+        out["action"] = "add"
+        out["set"] = {**{f: str(row.get(f) or "") for f in listing_fields}, "first_seen": today, "last_seen": today}
+        return out
+    sets = {}
+    for f in listing_fields:
+        new, old = str(row.get(f) or ""), str(existing.get(f) or "")
+        if not new or new == old:
+            continue
+        if f == "sources":
+            have = [s.strip() for s in old.replace(";", ",").split(",") if s.strip()]
+            if new not in have:
+                sets[f] = "; ".join(have + [new]) if have else new
+        elif f == "link":
+            if not old or any(a in old for a in AGGREGATOR_LINK):
+                sets[f] = new  # prefer the employer's own posting
+        elif f == "description":
+            if len(new) > len(old):
+                sets[f] = new
+        elif f in KEEP_IF_SET:
+            if not old:
+                sets[f] = new
+        elif f == "posted_date":
+            if not old:
+                sets[f] = new
+        else:
+            sets[f] = new
+    out.update(action="update", updated=bool(sets), reopen=closures.reopen_wanted(existing, row))
+    sets["last_seen"] = today
+    out["set"] = sets
+    return out
+
+
 def merge_rows(rows, listing_fields):
     """Upsert search results. Returns (added, updated, added_keys)."""
     db_fn, lock = _db
@@ -321,50 +375,27 @@ def merge_rows(rows, listing_fields):
     added_keys = []
     with lock, db_fn() as conn:
         for r in rows:
-            key = f"{r['company']}|{r['title']}".strip().lower()
+            key = job_key(r)
             if key == "|":
                 continue
             ex = conn.execute("SELECT * FROM jobs WHERE job_key=?", (key,)).fetchone()
-            if ex is None and r.get("posted_date") and r["posted_date"][:10] < cutoff:
-                continue  # already past the window — don't add (or re-add) it
-            if ex is None:
-                fields = ["job_key"] + listing_fields + ["first_seen", "last_seen", "updated_at"]
+            ex = dict(ex) if ex is not None else None
+            plan = merge_job(ex, r, listing_fields, today, cutoff)
+            if plan["action"] == "skip":
+                continue
+            if plan["action"] == "add":
+                fields = ["job_key"] + list(plan["set"]) + ["updated_at"]
                 conn.execute(f"INSERT INTO jobs ({', '.join(fields)}) VALUES ({', '.join('?' * len(fields))})",
-                             [key] + [str(r.get(f) or "") for f in listing_fields] + [today, today, ts])
+                             [key] + list(plan["set"].values()) + [ts])
                 added += 1
                 added_keys.append(key)
                 continue
-            ex = dict(ex)
-            sets = {}
             if closures.should_reopen(ex, r):   # taken down, now listed again: a repost
                 closures.reopen_in(conn, key)
-            for f in listing_fields:
-                new, old = str(r.get(f) or ""), str(ex.get(f) or "")
-                if not new or new == old:
-                    continue
-                if f == "sources":
-                    have = [s.strip() for s in old.replace(";", ",").split(",") if s.strip()]
-                    if new not in have:
-                        sets[f] = "; ".join(have + [new]) if have else new
-                elif f == "link":
-                    if not old or any(a in old for a in AGGREGATOR_LINK):
-                        sets[f] = new  # prefer the employer's own posting
-                elif f == "description":
-                    if len(new) > len(old):
-                        sets[f] = new
-                elif f in KEEP_IF_SET:
-                    if not old:
-                        sets[f] = new
-                elif f == "posted_date":
-                    if not old:
-                        sets[f] = new
-                else:
-                    sets[f] = new
-            sets["last_seen"] = today
-            sets["updated_at"] = ts
+            sets = dict(plan["set"], updated_at=ts)
             conn.execute(f"UPDATE jobs SET {', '.join(k + '=?' for k in sets)} WHERE job_key=?",
                          list(sets.values()) + [key])
-            if len(sets) > 2:
+            if plan["updated"]:
                 updated += 1
     return added, updated, added_keys
 
