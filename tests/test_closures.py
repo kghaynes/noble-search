@@ -213,3 +213,21 @@ class GreenhouseRedirect(unittest.TestCase):
                 self.assertEqual(closures.link_gone("https://jobs.example.com/1"), want, final)
         finally:
             urllib.request.urlopen, closures._public_host = old_open, old_host
+
+
+class KeepRule(unittest.TestCase):
+    """Spec section 25: how long a job stays in the list."""
+
+    def test_window(self):
+        from datetime import date
+        t = date(2026, 11, 26)
+        k = closures.keep_rule
+        self.assertEqual(k({"posted_date": "2026-10-27"}, t), {"from": "2026-10-27", "remove_on": "2026-11-27", "remove": False})
+        self.assertTrue(k({"posted_date": "2026-10-26"}, t)["remove"])
+        self.assertEqual(k({"posted_date": "", "last_seen": "2026-11-20T14:00:00+00:00"}, t)["from"], "2026-11-20")
+        self.assertEqual(k({"first_seen": "2026-09-01T00:00:00"}, t)["remove"], True)
+        self.assertEqual(k({"posted_date": "2026-09-01", "status": "applied"}, t), {"from": "2026-09-01", "remove_on": None, "remove": False})
+        self.assertEqual(k({"posted_date": "2026-09-01", "status": "dismissed"}, t)["remove"], True)
+        self.assertEqual(k({}, t), {"from": "", "remove_on": None, "remove": False})
+        self.assertEqual(k({"posted_date": "soon"}, t)["remove"], False)
+        self.assertEqual(k({"posted_date": "2026-11-01"}, t, keep_days=10)["remove_on"], "2026-11-12")
