@@ -136,13 +136,13 @@ def linkedin_cleanup():
         if conn.execute("SELECT v FROM meta WHERE k='linkedin_cleanup_v1'").fetchone():
             return 0
         rows = [dict(r) for r in conn.execute("SELECT job_key, status, sources, link FROM jobs WHERE instr(sources, 'LinkedIn') > 0")]
-        only = [r for r in rows if sources.linkedin_only(r["sources"])]
-        drop = [r["job_key"] for r in only if r["status"] not in WATCH_STATUSES]
-        for r in only:
-            if r["status"] in WATCH_STATUSES:
-                conn.execute("""UPDATE jobs SET location='', work_mode='', employment_type='', posted_date='', closing_date='',
-                                salary='', clearance='', description='', fit_reason='', link='', linkedin_link=? WHERE job_key=?""",
-                             (r["link"] or "", r["job_key"]))
+        plans = [(r, sources.linkedin_cleanup_action(r, WATCH_STATUSES)) for r in rows]
+        only = [r for r, p in plans if p["action"] != "keep"]
+        drop = [r["job_key"] for r, p in plans if p["action"] == "remove"]
+        for r, p in plans:
+            if p["action"] == "reduce":
+                conn.execute(f"UPDATE jobs SET {', '.join(k + '=?' for k in p['set'])} WHERE job_key=?",
+                             list(p["set"].values()) + [r["job_key"]])
         conn.execute("INSERT INTO meta(k, v) VALUES('linkedin_cleanup_v1', ?)", (now_iso(),))
     for key in drop:
         drafts.delete_for_job(key)
@@ -158,12 +158,8 @@ def linkedin_cleanup():
 def list_jobs():
     with _db_lock, db() as conn:
         rows = [dict(r) for r in conn.execute("SELECT * FROM jobs")]
-    if not search.get_config().get("jsearch_linkedin"):   # LinkedIn off: nothing from LinkedIn reaches the screen
-        rows = [r for r in rows if not sources.linkedin_only(r.get("sources"))]
-        for r in rows:
-            r["linkedin_link"] = ""
-    for r in rows:
-        r["linkedin_only"] = sources.linkedin_only(r.get("sources"))
+    on = bool(search.get_config().get("jsearch_linkedin"))   # LinkedIn off: nothing from LinkedIn reaches the screen
+    rows = [v for v in (sources.linkedin_view(r, on) for r in rows) if v is not None]
     for r in rows:
         r["has_description"] = bool(r.pop("description", ""))
     try:   # same town / home-state rules the search uses, so "Near home" works for any state
@@ -567,8 +563,7 @@ class Handler(BaseHTTPRequestHandler):
             if row and (row["description"] or "").strip() and not data.get("force"):
                 return {"ok": True, "text": row["description"], "reason": "", "source": "daily search"}
             if row and not row["link"] and row["linkedin_link"]:
-                return {"ok": False, "text": "", "source": "posting", "reason": search.LINKEDIN_NOTICE.split(" — ")[0] +
-                        ". Open the posting on LinkedIn, copy the description, and paste it here."}
+                return {"ok": False, "text": "", "source": "posting", "reason": search.LINKEDIN_PASTE}
             ok, text, reason = resume.fetch_posting(row["link"] if row else "")
             return {"ok": ok, "text": text, "reason": reason, "source": "posting"}
         if path == "/drafts/create":
