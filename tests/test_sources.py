@@ -134,6 +134,29 @@ class Readers(unittest.TestCase):
         self.assertIn("Lead ops", rows[0]["description"])
         self.assertEqual(rows[0]["salary"], "$200,000 - $250,000")
 
+    def test_icims(self):
+        self.assertEqual(sources.detect("https://careers.govcio.com/careers-home/jobs"), ("icims", {"host": "careers.govcio.com"}))
+        page = {"totalCount": 4, "jobs": [
+            {"data": {"slug": "11", "title": "Director, Cyber Programs", "city": "Melbourne", "state": "Florida", "full_location": "Melbourne, Florida",
+                      "location_name": "FL01 - FL-Melbourne", "posted_date": D(1) + "T04:19:00+0000", "description": "<p>Lead. Secret clearance.</p>",
+                      "qualifications": "<p>10 years.</p>", "tags1": ["Secret"], "tags2": ["Onsite"], "salary_min_value": 150000, "salary_max_value": 190000}},
+            {"data": {"slug": "12", "title": "Director, IT Operations", "city": None, "state": None, "full_location": "United States",
+                      "location_name": "REMT - Remote - US", "posted_date": D(2) + "T04:19:00+0000", "description": "<p>Remote.</p>",
+                      "tags1": ["No Clearance Needed"], "tags2": ["Fully remote"], "salary_min_value": 0, "salary_max_value": 0}},
+            {"data": {"slug": "13", "title": "Director, Finance", "city": "Springfield", "state": "Virginia", "full_location": "Springfield, Virginia",
+                      "location_name": "VA64", "posted_date": D(1) + "T04:19:00+0000", "description": "x"}},
+            {"data": {"slug": "14", "title": "Director, Old", "city": "Melbourne", "state": "Florida", "posted_date": D(90) + "T04:19:00+0000"}}]}
+        rows, st, fake = self.run_board({"name": "GovCIO", "url": "https://careers.govcio.com/careers-home/jobs"}, {"/api/jobs": page})
+        self.assertEqual([r["title"] for r in rows], ["Director, Cyber Programs", "Director, IT Operations"], st)
+        a, b = rows
+        self.assertEqual((a["location"], a["work_mode"], a["salary"], a["clearance"]), ("Melbourne, Florida", "On-site", "$150,000 - $190,000", "Secret"))
+        self.assertEqual(a["link"], "https://careers.govcio.com/careers-home/jobs/11")
+        self.assertIn("10 years", a["description"])
+        self.assertEqual((b["location"], b["work_mode"], b["clearance"]), ("Remote (US)", "Remote", ""))
+        self.assertEqual(st["scanned"], 3)
+        self.assertIn("page=1&limit=100&sortBy=posted_date&descending=true", fake.calls[0][0])
+        self.assertEqual(len(fake.calls), 1)
+
     def test_eightfold(self):
         search = {"data": {"count": 2, "positions": [
             {"id": 1, "name": "Multifunctional Engineering & Science Mgr - L5", "standardizedLocations": ["Cape Canaveral, FL, US"],
