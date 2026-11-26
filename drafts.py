@@ -15,6 +15,9 @@ import privacy
 import profile_store as ps
 import resume
 import prompt_guard as guard
+# Inventory headings and sections live in career_inventory (spec inventory.json; SPEC sections 5, 7 and 16).
+from career_inventory import (INVENTORY_CERTS_HEADING, INVENTORY_GAPS_HEADING, _HEADING_RE,  # noqa: F401
+                              _heading_key, inventory_section)
 
 DB_PATH = os.environ.get("DB_PATH", "/data/jobs.db")
 DRAFT_DIR = os.path.join(os.path.dirname(DB_PATH) or ".", "drafts")
@@ -202,6 +205,13 @@ def _keywords(r, settings, draft_text, source_text):
 
 
 MAX_REPLY_TOKENS = 32000
+# What a failed draft says (spec drafts.json "errors"; SPEC section 7.3). A failed draft is not retried by itself:
+# the person asks for a new one.
+CUT_OFF_ERROR = ("The model's reply was too long and got cut off, even with the largest limit. "
+                 "Try again, shorten the pasted job description, or switch models.")
+EMPTY_RESUME_ERROR = "The model returned a resume with no experience section. Try again or switch models."
+EMPTY_APPLICATION_ERROR = "The model returned empty application text. Try again or switch models."
+EMPTY_PROFILE_ERROR = "Your Profile is empty. Upload a resume and/or fill in the career inventory first."
 
 
 def _complete_json(settings, system, user, provider, kind, did, max_tokens=16000):
@@ -218,8 +228,7 @@ def _complete_json(settings, system, user, provider, kind, did, max_tokens=16000
             applog.warn("draft", f"{kind} draft #{did}: {e} (try {attempt + 1}"
                                  + (f", reply saved as logs/{saved}" if saved else "") + ")")
             if limit >= MAX_REPLY_TOKENS:
-                raise llm.LLMError("The model's reply was too long and got cut off, even with the largest limit. "
-                                   "Try again, shorten the pasted job description, or switch models.") from None
+                raise llm.LLMError(CUT_OFF_ERROR) from None
             last, limit = e, min(limit * 2, MAX_REPLY_TOKENS)
             continue
         try:
@@ -241,14 +250,14 @@ def _run_application(did, r, settings):
     profile = ps.get_profile()
     inv, texts = _sources()
     if not inv.strip() and not texts:
-        raise RuntimeError("Your Profile is empty. Upload a resume and/or fill in the career inventory first.")
+        raise RuntimeError(EMPTY_PROFILE_ERROR)
     extra = json.loads(r.get("extra_json") or "{}")
     profile = dict(profile, template_resume=_template_for(r, profile))   # the resume picked for this job leads
     system, user = apply.build_app_prompt(profile, inv, texts, job, r["jd_text"], extra.get("questions") or [])
     data, provider, model = _complete_json(settings, system, user, r["provider"], "application", did)
     app = apply.normalize_app(data)
     if not app["work_history"] and not app["summary"]:
-        raise RuntimeError("The model returned empty application text. Try again or switch models.")
+        raise RuntimeError(EMPTY_APPLICATION_ERROR)
     text = apply.app_plain_text(app)
     source_text = inv + "\n" + "\n".join(t for _, t in texts)
     lines = [ln for ln in re.sub(r"\b\d{1,2}/\d{4}\b", " ", text).splitlines() if ln.strip()]  # MM/YYYY dates aren't claims
@@ -276,13 +285,13 @@ def _run_resume(did, r, settings):
     profile = ps.get_profile()
     inv, texts = _sources()
     if not inv.strip() and not texts:
-        raise RuntimeError("Your Profile is empty. Upload a resume and/or fill in the career inventory first.")
+        raise RuntimeError(EMPTY_PROFILE_ERROR)
     tname = _template_for(r, profile)
     system, user = resume.build_resume_prompt(profile, inv, texts, job, r["jd_text"], tname)
     data, provider, model = _complete_json(settings, system, user, r["provider"], "resume", did)
     content = resume.normalize_resume(data)
     if not content["experience"]:
-        raise RuntimeError("The model returned a resume with no experience section. Try again or switch models.")
+        raise RuntimeError(EMPTY_RESUME_ERROR)
     source_text = inv + "\n" + "\n".join(t for _, t in texts)
     facts = resume.fact_check(content, source_text)
     safe_company = "".join(ch for ch in (job.get("company") or "job") if ch.isalnum())[:30]
@@ -304,10 +313,6 @@ def _run_resume(did, r, settings):
             keywords_json=json.dumps(kw) if kw else "")
 
 
-# Inventory section headings the fit rating looks for (spec inventory.json; SPEC sections 5 and 16).
-INVENTORY_CERTS_HEADING = "Certifications"
-INVENTORY_GAPS_HEADING = "Gaps / to fill in"
-
 INVENTORY_SYSTEM = """You turn resumes into a detailed CAREER INVENTORY in Markdown that a resume writer will use as the single source of truth.
 Rules: use ONLY facts in the resumes — never invent numbers, titles, dates or outcomes. Keep every metric exactly as written.
 Structure:
@@ -327,31 +332,6 @@ Structure:
 ## Military-to-civilian translation notes (acronyms spelled out, civilian equivalents)
 ## {gaps} (things a writer would want that are missing — questions for the candidate)
 Return Markdown only.""".format(certs=INVENTORY_CERTS_HEADING, gaps=INVENTORY_GAPS_HEADING)
-
-
-_HEADING_RE = re.compile(r"^ {0,3}(#{1,6})[ \t]+(.*?)[ \t#]*$")
-
-
-def _heading_key(text):
-    return re.sub(r"\s+", "", text.replace("*", "").replace("_", "")).casefold()
-
-
-def inventory_section(lines, heading):
-    """Spec section 16: (start, end) line indexes of the first Markdown section whose heading text starts with
-    `heading` (ignoring case, whitespace, * and _): from its heading line up to the next heading of the same
-    or a higher level, or the end. None when there is no such heading."""
-    want = _heading_key(heading)
-    start = level = None
-    for i, line in enumerate(lines):
-        mt = _HEADING_RE.match(line)
-        if not mt:
-            continue
-        if start is None:
-            if _heading_key(mt.group(2)).startswith(want):
-                start, level = i, len(mt.group(1))
-        elif len(mt.group(1)) <= level:
-            return start, i
-    return None if start is None else (start, len(lines))
 
 
 INVENTORY_NEEDS_RESUME = "Upload at least one resume first."

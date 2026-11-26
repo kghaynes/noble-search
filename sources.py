@@ -1656,6 +1656,7 @@ JSEARCH_HOSTS = {
 
 
 JSEARCH_FREE_MONTHLY = 200   # requests a month on the free plans
+WEEKS_PER_MONTH = 4.33       # run days a week x this = runs a month (search budget, spec section 11)
 
 
 PLACE_IN = re.compile(r"\bin\s+(?:\{home\}|[A-Z][A-Za-z.]+)")   # "in Orlando, FL" / "in {home}" (not "in training")
@@ -1724,7 +1725,7 @@ def jsearch_plan(cfg, ctx, day=None):
                          "remote": bool(re.search(r"\bremote\b", line, re.I))})
     pages = max(1, min(5, int(cfg.get("jsearch_pages") or 1)))
     days = run_days(cfg)
-    runs_month = len(days) * 4.33
+    runs_month = len(days) * WEEKS_PER_MONTH
     budget = int(cfg.get("jsearch_budget") or JSEARCH_FREE_MONTHLY)
     per_run = max(1, int(budget // (runs_month * pages)))
     total = len(searches)
