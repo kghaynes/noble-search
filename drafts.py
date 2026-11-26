@@ -304,6 +304,10 @@ def _run_resume(did, r, settings):
             keywords_json=json.dumps(kw) if kw else "")
 
 
+# Inventory section headings the fit rating looks for (spec inventory.json; SPEC sections 5 and 16).
+INVENTORY_CERTS_HEADING = "Certifications"
+INVENTORY_GAPS_HEADING = "Gaps / to fill in"
+
 INVENTORY_SYSTEM = """You turn resumes into a detailed CAREER INVENTORY in Markdown that a resume writer will use as the single source of truth.
 Rules: use ONLY facts in the resumes — never invent numbers, titles, dates or outcomes. Keep every metric exactly as written.
 Structure:
@@ -316,13 +320,38 @@ Structure:
 - Accomplishments: bullets with metrics
 - Keywords: comma-separated
 ## Education
-## Certifications
+## {certs}
 ## Awards & recognitions
 ## Volunteer / board roles
 ## Technical skills
 ## Military-to-civilian translation notes (acronyms spelled out, civilian equivalents)
-## Gaps / to fill in (things a writer would want that are missing — questions for the candidate)
-Return Markdown only."""
+## {gaps} (things a writer would want that are missing — questions for the candidate)
+Return Markdown only.""".format(certs=INVENTORY_CERTS_HEADING, gaps=INVENTORY_GAPS_HEADING)
+
+
+_HEADING_RE = re.compile(r"^ {0,3}(#{1,6})[ \t]+(.*?)[ \t#]*$")
+
+
+def _heading_key(text):
+    return re.sub(r"\s+", "", text.replace("*", "").replace("_", "")).casefold()
+
+
+def inventory_section(lines, heading):
+    """Spec section 16: (start, end) line indexes of the first Markdown section whose heading text starts with
+    `heading` (ignoring case, whitespace, * and _): from its heading line up to the next heading of the same
+    or a higher level, or the end. None when there is no such heading."""
+    want = _heading_key(heading)
+    start = level = None
+    for i, line in enumerate(lines):
+        mt = _HEADING_RE.match(line)
+        if not mt:
+            continue
+        if start is None:
+            if _heading_key(mt.group(2)).startswith(want):
+                start, level = i, len(mt.group(1))
+        elif len(mt.group(1)) <= level:
+            return start, i
+    return None if start is None else (start, len(lines))
 
 
 INVENTORY_NEEDS_RESUME = "Upload at least one resume first."

@@ -509,7 +509,7 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError("unknown job")
             try:
                 if key:
-                    fit.run_async([key], data.get("provider"), force=True)
+                    fit.run_async([key], data.get("provider"), force=True, manual=True)
                 else:
                     fit.run_async(None, data.get("provider"))
             except RuntimeError as e:

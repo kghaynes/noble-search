@@ -1028,7 +1028,7 @@ async function renderSettings(){
         <label class="fld">API key<input data-set="anthropic_api_key" type="password" autocomplete="off" placeholder="${s.anthropic_key_set?esc(s.anthropic_api_key)+' (saved — paste to replace)':'sk-ant-…'}"></label>
         <div></div>
         <label class="fld">Model for resumes &amp; applications<input data-set="anthropic_model" value="${esc(s.anthropic_model)}" list="amodels"></label>
-        <label class="fld">Model for fit rating (runs on every new job — a small model keeps it cheap)<input data-set="anthropic_fit_model" value="${esc(s.anthropic_fit_model)}" list="amodels"></label>
+        <label class="fld">Model for fit rating (runs on every new job — a small model keeps it cheap; Rate or Re-rate on one job uses the drafts model)<input data-set="anthropic_fit_model" value="${esc(s.anthropic_fit_model)}" list="amodels"></label>
         <datalist id="amodels"><option value="claude-sonnet-5-5"><option value="claude-opus-5-5"><option value="claude-haiku-4-5-20251001"></datalist>
       </div>
       <label class="radio" style="margin-top:8px"><input type="checkbox" data-set="redact_pii" ${s.redact_pii!==false?'checked':''}> Hide my personal details from the AI (recommended)</label>

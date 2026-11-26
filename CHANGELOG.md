@@ -5,6 +5,8 @@ All notable changes are listed here. Versions follow [semantic versioning](https
 ## [Unreleased]
 
 ### Changed
+- **Fit rating no longer misses certifications you hold.** The fit prompt now has a `Certifications held:` line near the top, built from your career inventory's Certifications section and your military-earned certifications (bullets and bold removed, notes skipped, duplicates dropped). The rater is told to check that line, your military background and your inventory before calling a certification, degree or clearance a gap, and that holding one of several alternatives ("CISSP/CISM/CCSP") meets the requirement. The inventory's "Gaps / to fill in" section (open questions for you, not facts) is left out of the fit prompt; resume and application drafts still get it. Spec section 5.
+- **Rate / Re-rate on one job uses the stronger model.** A rating you ask for on one job (Rate or Re-rate Fit on a job, or after pasting a description) now runs on the Claude model set for drafts; ratings of the whole list and automatic ratings still use the cheaper fit model.
 - How a job found again is merged with the stored one (`search.merge_job`) and the LinkedIn rules for stored jobs (`sources.linkedin_cleanup_action`, `sources.linkedin_view`, `search.LINKEDIN_PASTE`) are now pure functions and part of the shared spec (section 26), so the Apple app follows the same rules. No change in behavior.
 - The 30-day cleanup rule (how long a job stays in your list, with its drafts, unless you marked it Interested, Applied, Interviewing or Offer) now lives in `closures.keep_rule` and is part of the shared spec (section 25), so the Apple app follows the same rule. No change in behavior, except that a job whose date can't be read is now always kept.
 
