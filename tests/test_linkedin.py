@@ -153,14 +153,14 @@ class RateWithDescription(Base):
         self.assertFalse(next(j for j in app.list_jobs() if j["job_key"] == "acme|director it")["has_description"])  # → warning pill
         import fit
         calls, old = [], fit.run_async
-        fit.run_async = lambda keys=None, provider=None, force=False: calls.append((keys, force))
+        fit.run_async = lambda keys=None, provider=None, force=False, manual=False: calls.append((keys, force, manual))
         try:
             with self.assertRaises(ValueError):
                 app.Handler._post_extra(None, "/jobs/rate", {"job_key": "acme|director it", "jd_text": "too short"})
             app.Handler._post_extra(None, "/jobs/rate", {"job_key": "acme|director it", "jd_text": "Lead IT. " * 40})
         finally:
             fit.run_async = old
-        self.assertEqual(calls, [(["acme|director it"], True)])
+        self.assertEqual(calls, [(["acme|director it"], True, True)])   # pasted description: one job, draft-tier model
         self.assertTrue(next(j for j in app.list_jobs() if j["job_key"] == "acme|director it")["has_description"])
 
 
