@@ -31,11 +31,28 @@ import statistics
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import applog
 
 WATCH = ("interested", "applied", "interviewing", "offer")
+KEEP_DAYS = 30   # how long a job stays in the list (and its drafts) unless it's on the watchlist
+
+
+def keep_rule(job, today, keep_days=KEEP_DAYS):
+    """How long one job stays in the list (spec section 25). job = posted_date, last_seen, first_seen, status;
+    today = a date. The window counts from the posted date, else when the job was last seen, else first seen.
+    Returns {"from": that date or "", "remove_on": the first day it's gone or None, "remove": bool}.
+    Watchlist jobs (statuses in WATCH) are kept: remove_on None. A job with no readable date is kept."""
+    ref = (job.get("posted_date") or job.get("last_seen") or job.get("first_seen") or "")[:10]
+    try:
+        start = date.fromisoformat(ref)
+    except ValueError:
+        return {"from": ref, "remove_on": None, "remove": False}
+    if job.get("status") in WATCH:
+        return {"from": ref, "remove_on": None, "remove": False}
+    remove_on = start + timedelta(days=keep_days + 1)
+    return {"from": ref, "remove_on": remove_on.isoformat(), "remove": today >= remove_on}
 DETECTED_BY = {"employer": "Taken down from the employer's hiring site",
                "usajobs": "Removed from USAJOBS",
                "link": "The posting link no longer works",

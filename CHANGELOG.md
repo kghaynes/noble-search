@@ -4,6 +4,9 @@ All notable changes are listed here. Versions follow [semantic versioning](https
 
 ## [Unreleased]
 
+### Changed
+- The 30-day cleanup rule (how long a job stays in your list, with its drafts, unless you marked it Interested, Applied, Interviewing or Offer) now lives in `closures.keep_rule` and is part of the shared spec (section 25), so the Apple app follows the same rule. No change in behavior, except that a job whose date can't be read is now always kept.
+
 ### Added
 - **iCIMS career sites are read directly.** An employer whose careers address looks like `careers.company.com/careers-home/jobs` (iCIMS, common among government contractors) is now read from its own job list on every search, newest first, with pay, clearance and remote tags. Before, these sites fell back to the sitemap, which is often missing or broken (GovCIO's answered 404). Find job board recognizes them too.
 

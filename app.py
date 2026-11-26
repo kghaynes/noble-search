@@ -98,29 +98,27 @@ def ref_date(r):
     return (r.get("posted_date") or r.get("last_seen") or r.get("first_seen") or "")[:10]
 
 
+def _today():
+    return datetime.now(timezone.utc).date()
+
+
 def expires_on(r):
-    """Date the job (and its drafts) will be removed; None for watchlist jobs (kept)."""
-    if r.get("status") in WATCH_STATUSES:
-        return None
-    ref = ref_date(r)
-    try:
-        return (datetime.fromisoformat(ref) + timedelta(days=MAX_AGE_DAYS + 1)).date().isoformat()
-    except ValueError:
-        return None
+    """Date the job (and its drafts) will be removed; None for watchlist jobs (kept). Spec section 25."""
+    return closures.keep_rule(r, _today(), MAX_AGE_DAYS)["remove_on"]
 
 
 def is_active(r):
     """Listing still in the 30-day window (by posted or last_seen date)."""
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=MAX_AGE_DAYS)).date().isoformat()
-    ref = ref_date(r)
-    return ref >= cutoff if ref else True
+    k = closures.keep_rule({**r, "status": ""}, _today(), MAX_AGE_DAYS)
+    return not k["remove"]
 
 
 def purge_expired():
     """Delete jobs past their 30-day window that are not on the watchlist — with their drafts."""
     with _db_lock, db() as conn:
         rows = [dict(r) for r in conn.execute("SELECT job_key, status, posted_date, last_seen, first_seen FROM jobs")]
-    gone = [r["job_key"] for r in rows if r.get("status") not in WATCH_STATUSES and not is_active(r)]
+    today = _today()
+    gone = [r["job_key"] for r in rows if closures.keep_rule(r, today, MAX_AGE_DAYS)["remove"]]
     for key in gone:
         drafts.delete_for_job(key)
     if gone:
