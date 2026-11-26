@@ -1,7 +1,7 @@
 """Job readers that run on this server — no cloud service needed.
 
 Each reader pulls openings straight from an employer's own hiring system
-(Workday, Greenhouse, Lever, Ashby, SmartRecruiters, BambooHR, Eightfold, or a
+(Workday, Greenhouse, Lever, Ashby, SmartRecruiters, BambooHR, Eightfold, iCIMS, or a
 career site's sitemap) or from the USAJOBS API, then keeps only postings that:
   * match the title rules (level words such as Director / VP / Chief), and
   * are near home (a listed town) or remote, and
@@ -176,7 +176,7 @@ DEFAULT_BOARDS = []
 
 READER_LABELS = {
     "workday": "Workday", "greenhouse": "Greenhouse", "lever": "Lever", "ashby": "Ashby",
-    "smartrecruiters": "SmartRecruiters", "bamboohr": "BambooHR", "eightfold": "Eightfold",
+    "smartrecruiters": "SmartRecruiters", "bamboohr": "BambooHR", "eightfold": "Eightfold", "icims": "iCIMS",
     "sitemap": "Career site", "off": "Not readable",
 }
 
@@ -702,6 +702,9 @@ def detect(url):
         # *.eightfold.ai, or an Eightfold site on the employer's own domain (careers?domain=example.com)
         dom = qs.get("domain", [""])[0] or host.split(".")[0] + ".com"
         return "eightfold", {"host": host, "domain": dom}
+    if parts[:1] == ["careers-home"]:
+        # an iCIMS career site on the employer's own domain (careers.example.com/careers-home/jobs)
+        return "icims", {"host": host}
     if host == "adp.com" or host.endswith(".adp.com"):
         return "off", {}
     sm = url if u.path.lower().endswith(".xml") else f"{u.scheme or 'https'}://{u.netloc}/sitemap.xml"
@@ -1040,6 +1043,64 @@ def read_eightfold(board, p, ctx, st):
         yield row
 
 
+def icims_listing(x, name, host, ctx):
+    """One job from an iCIMS career site's job list -> (row or None, stage). The list carries the whole posting."""
+    posted = parse_date(x.get("posted_date") or x.get("create_date"))
+    if not ctx.age_ok(posted):
+        return None, "age"
+    if not ctx.title_ok(x.get("title")):
+        return None, "title"
+    town = ", ".join(v for v in (x.get("city"), x.get("state")) if v)
+    tags = [t for k in ("tags1", "tags2", "tags3", "tags4") for t in (x.get(k) or []) if isinstance(t, str)]
+    site = x.get("location_name") or ""
+    remote = bool(re.search(r"\bremote\b", site, re.I)) or any(
+        re.search(r"\bremote\b", t, re.I) and not re.search(r"hybrid", t, re.I) for t in tags)
+    # a remote job with no town is listed under its country only ("United States"): leave the place empty
+    place = town or ("" if remote else (x.get("full_location") or ""))
+    w = ctx.where(place, remote_flag=remote)
+    if not w:
+        return None, "place"
+    lo, hi = x.get("salary_min_value") or 0, x.get("salary_max_value") or 0
+    pay = f"${lo:,.0f} - ${hi:,.0f}" if lo and hi else ""
+    clr = next((t for t in tags if re.search(r"clearance|secret|ts/sci|public trust", t, re.I)
+                and not re.match(r"\s*no\b", t, re.I)), "")
+    mode = "Remote" if w == "remote" else ("Hybrid" if any(re.search(r"hybrid", t, re.I) for t in tags) else "On-site")
+    desc = "\n\n".join(html_to_text(x.get(k)) for k in ("description", "responsibilities", "qualifications") if x.get(k))
+    return make_row(ctx, company=name, title=x.get("title"), location=place, where=w,
+                    link=f"https://{host}/careers-home/jobs/{x.get('slug') or x.get('req_id') or ''}",
+                    posted=posted, description=desc, salary=pay, clearance=clr, work_mode=mode,
+                    source=f"{name} careers (iCIMS)"), "kept"
+
+
+ICIMS_PAGE = 100
+
+
+def icims_url(host, page):
+    """One page of an iCIMS career site's job list, newest first."""
+    return f"https://{host}/api/jobs?page={page}&limit={ICIMS_PAGE}&sortBy=posted_date&descending=true"
+
+
+def read_icims(board, p, ctx, st):
+    for page in range(1, ctx.max_pages + 1):
+        j = http(icims_url(p["host"], page), timeout=60)
+        jobs = [(x.get("data") or {}) for x in j.get("jobs") or [] if isinstance(x, dict)]
+        if not jobs:
+            break
+        old = 0
+        for x in jobs:
+            row, stage = icims_listing(x, board["name"], p["host"], ctx)
+            if stage == "age":
+                old += 1
+                continue
+            st["scanned"] += 1
+            if stage in ("place", "kept"):
+                st["title_matches"] += 1
+            if row:
+                yield row
+        if old == len(jobs) or page * ICIMS_PAGE >= int(j.get("totalCount") or 0):
+            break
+
+
 # ---- generic career site: sitemap + structured data on each job page
 BOT_CHECK = re.compile(r"awsWafCookieDomainList|gokuProps|cf-chl-|challenge-platform|_Incapsula_|px-captcha|"
                        r"Just a moment\.\.\.|Access Denied|captcha", re.I)
@@ -1347,7 +1408,7 @@ def read_sitemap(board, p, ctx, st):
 READERS = {
     "workday": read_workday, "greenhouse": read_greenhouse, "lever": read_lever, "ashby": read_ashby,
     "smartrecruiters": read_smartrecruiters, "bamboohr": read_bamboohr, "eightfold": read_eightfold,
-    "sitemap": read_sitemap,
+    "icims": read_icims, "sitemap": read_sitemap,
 }
 
 

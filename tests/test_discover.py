@@ -22,6 +22,8 @@ class Discover(unittest.TestCase):
                          ("https://ngc.wd1.myworkdayjobs.com/Northrop_Grumman_External_Site", "workday"))
         self.assertEqual(f("https://job-boards.greenhouse.io/embed/job_board?for=relativity"), ("https://boards.greenhouse.io/relativity", "greenhouse"))
         self.assertEqual(f("https://boards.greenhouse.io/spacex/jobs/123"), ("https://boards.greenhouse.io/spacex", "greenhouse"))
+        self.assertEqual(f("https://careers.govcio.com/careers-home/jobs/11915?lang=en-us", "govcio.com"),
+                         ("https://careers.govcio.com/careers-home/jobs", "icims"))
         self.assertEqual(f("https://lockheedmartin.eightfold.ai/careers/job/1", "lockheedmartin.com"),
                          ("https://lockheedmartin.eightfold.ai/careers?domain=lockheedmartin.com", "eightfold"))
         self.assertEqual(f("https://workforcenow.adp.com/mascsr/default/mdf/recruitment/recruitment.html?cid=x"), (None, "ADP Workforce Now"))

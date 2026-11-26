@@ -103,6 +103,8 @@ def board_from_url(u, site_domain=""):
     if host.endswith(".eightfold.ai"):
         dom = qs.get("domain", [""])[0] or site_domain or host.split(".")[0] + ".com"
         return f"https://{host}/careers?domain={dom}", "eightfold"
+    if parts[:1] == ["careers-home"]:
+        return f"https://{host}/careers-home/jobs", "icims"
     for pat, label in UNSUPPORTED:
         if re.search(pat, host):
             return None, label
@@ -140,6 +142,9 @@ def count_jobs(url, kind):
         q = urllib.parse.urlencode({"domain": p["domain"], "query": "", "start": 0})
         d = sources.http(f"https://{p['host']}/api/pcsx/search?{q}", timeout=TIMEOUT, retries=1).get("data") or {}
         return int(d.get("count") or 0), [x.get("name") for x in (d.get("positions") or [])[:3]]
+    if kind == "icims":
+        j = sources.http(f"https://{p['host']}/api/jobs?page=1&limit=3&sortBy=posted_date&descending=true", timeout=TIMEOUT, retries=1)
+        return int(j.get("totalCount") or 0), [(x.get("data") or {}).get("title") for x in (j.get("jobs") or [])[:3]]
     if kind == "sitemap":
         urls = sources._sitemap_urls(p["sitemap"])
         jobs = [u for u, _ in urls if re.search(r"/job(s|detail)?/", u, re.I)]
@@ -237,6 +242,9 @@ def discover(name, website="", cfg=None):
                     consider(b, kind, f"linked from {urllib.parse.urlparse(url).netloc}")
                 elif kind:
                     unsupported.add(kind)
+            if "jibeapply" in text or "/careers-home" in url:  # an iCIMS career site on the employer's own domain
+                h = urllib.parse.urlparse(url).netloc
+                consider(f"https://{h}/careers-home/jobs", "icims", f"iCIMS career site at {h}")
             if "eightfold" in text.lower() and "/careers" in url:  # Eightfold on the employer's own domain
                 h = urllib.parse.urlparse(url).netloc
                 consider(f"https://{h}/careers?domain={site_domain}", "eightfold", f"Eightfold site at {h}")
@@ -276,7 +284,7 @@ def discover(name, website="", cfg=None):
                 cands.append({**c, "jobs": n, "sample": [s for s in sample if s][:3], "label": sources.READER_LABELS[c["type"]]})
         except Exception as e:  # noqa: BLE001
             log.append(f"{c['url']} could not be read ({str(e)[:80]}).")
-    order = ["workday", "eightfold", "greenhouse", "lever", "ashby", "smartrecruiters", "bamboohr", "sitemap"]
+    order = ["workday", "eightfold", "icims", "greenhouse", "lever", "ashby", "smartrecruiters", "bamboohr", "sitemap"]
     cands.sort(key=lambda c: (order.index(c["type"]), -c["jobs"]))
     tip = ""
     if not cands:

@@ -418,6 +418,7 @@ For each employer on your list, Noble Search reads the employer's **own hiring s
 | Greenhouse, Lever, Ashby | Many tech companies and start-ups |
 | SmartRecruiters, BambooHR | Many mid-size companies |
 | Eightfold | Some large companies |
+| iCIMS career sites | Addresses like `careers.company.com/careers-home/jobs` (many government contractors) |
 | Career-site sitemap | Sites that publish structured job data |
 
 It **cannot** read these systems:
@@ -469,7 +470,7 @@ Many postings come down within days, long before the closing date they list. Nob
 
 | Where it was found | What happens | Marked by |
 |---|---|---|
-| The employer's own hiring system (Workday, Greenhouse, Lever, Ashby, SmartRecruiters, BambooHR, Eightfold, sitemap) | It's gone from the employer's list in a search that worked → **closed right away** | *Taken down from the employer's hiring site* |
+| The employer's own hiring system (Workday, Greenhouse, Lever, Ashby, SmartRecruiters, BambooHR, Eightfold, iCIMS, sitemap) | It's gone from the employer's list in a search that worked → **closed right away** | *Taken down from the employer's hiring site* |
 | USAJOBS | It dropped out of USAJOBS (which only lists open announcements) → closed; if that's before its closing date, the card says how many days early | *Removed from USAJOBS* |
 | A job on your watchlist | Its posting link now answers "not found" → closed | *The posting link no longer works* |
 | Anywhere, including LinkedIn and Indeed | You click **Posting closed?** | *You marked it closed* |

@@ -3,7 +3,7 @@ records into an "apply fast" signal per employer.
 
 How a posting is marked closed (see docs/closed-postings.md for the full story):
   employer  — it vanished from the employer's own hiring system (Workday, Greenhouse, Lever, Ashby,
-              SmartRecruiters, BambooHR, Eightfold or its job sitemap) in a read that worked
+              SmartRecruiters, BambooHR, Eightfold, iCIMS or its job sitemap) in a read that worked
   usajobs   — it dropped out of USAJOBS (the API only lists open announcements)
   link      — a watchlist job whose posting link now answers "not found"
   you       — you pressed "Posting closed"

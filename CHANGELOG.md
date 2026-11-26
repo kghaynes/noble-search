@@ -4,6 +4,9 @@ All notable changes are listed here. Versions follow [semantic versioning](https
 
 ## [Unreleased]
 
+### Added
+- **iCIMS career sites are read directly.** An employer whose careers address looks like `careers.company.com/careers-home/jobs` (iCIMS, common among government contractors) is now read from its own job list on every search, newest first, with pay, clearance and remote tags. Before, these sites fell back to the sitemap, which is often missing or broken (GovCIO's answered 404). Find job board recognizes them too.
+
 ### Changed
 - **Seniority words are now a switch, a level and a list per level** (Search → What counts as a match), matching the Noble Search Apple app. **Require a seniority word** (on by default) keeps only titles with one of the words; off keeps any title, so you get many more results. **Level** picks *Executive & senior leadership* (default) or *Manager & senior professional*. Each level has its own word list, shown one plain word or phrase per line; your edits to one level are kept when you switch to another, and **Reset to default** appears once a level has been edited. The old "Start from a preset" menu and its "Replace the title list?" question are gone. Existing settings carry over unchanged: a custom list becomes your edited *Executive* list (or the level it matches), and "*" turns the switch off. Skip words work as before.
 
