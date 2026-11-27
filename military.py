@@ -173,6 +173,16 @@ def derive(p, today):
     return out
 
 
+MILITARY_HEADING = "# MILITARY BACKGROUND (translate codes and rank into civilian scope and level)"
+
+
+def military_block(p):
+    """The prompt lines for the military background: a blank line, MILITARY_HEADING, military_text(p); [] when
+    nothing is set. Fit, resume and application prompts all use this (spec sections 5, 7.1, 7.2)."""
+    mil = military_text(p)
+    return ["", MILITARY_HEADING, mil] if mil else []
+
+
 def military_text(p):
     """Plain-text military background block for AI prompts ('' if none given). Federal-hiring fields are never
     included."""

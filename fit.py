@@ -13,6 +13,7 @@ import drafts
 import applog
 import llm
 import profile_store as ps
+from military import military_block
 import prompt_guard as guard
 # The "Certifications held" line is shared with the resume and application prompts (SPEC sections 5 and 7).
 from career_inventory import (CERTS_LABEL, CERTS_MAX_ITEMS, CERTS_ITEM_MAX_CHARS, CERTS_NOTE_MAX_WORDS,  # noqa: F401
@@ -103,9 +104,7 @@ def system_prompt(profile, inventory, resume_texts):
                    ("work_modes", "Work modes"), ("employment_types", "Employment types")):
         if str(profile.get(k) or "").strip():
             parts.append(f"{lbl}: {str(profile[k]).strip()}")
-    mil = ps.military_text(profile)
-    if mil:
-        parts += ["", "# MILITARY BACKGROUND (translate codes and rank into civilian scope and level)", mil]
+    parts += military_block(profile)
     if str(profile.get("notes") or "").strip():
         parts += ["", "# CANDIDATE'S OWN NOTES", guard.notes(profile["notes"])]
     if inventory.strip():
