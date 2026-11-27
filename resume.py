@@ -12,6 +12,7 @@ from docx.oxml.ns import qn
 from docx.shared import Pt, RGBColor
 import prompt_guard as guard
 from career_inventory import CERTS_LABEL, INVENTORY_GAPS_HEADING, certifications_line
+from military import military_block
 
 ACCENT = "1E3764"          # navy used in the source resume
 HEADING_FILL = "F2F2F2"    # light gray section band
@@ -107,7 +108,7 @@ Write a tailored two-page resume for ONE specific job, using ONLY facts from the
 
 Hard rules:
 1. TRUTH: never invent employers, titles, dates, degrees, certifications, clearances, numbers, percentages, dollar amounts, headcounts or outcomes. Every number you write must appear in the source material. If the job wants something the candidate lacks, do NOT claim it — list it under notes_for_candidate as a gap. Certifications, degrees and clearances the candidate lists (including the \"""" + CERTS_LABEL + """\" line) are held: use them where they help, and never list one of them as missing or as a gap. Never add one that is not listed. The career inventory's \"""" + INVENTORY_GAPS_HEADING + """\" section holds open questions for the candidate, not things the candidate lacks.
-2. TRANSLATE: express military roles in civilian terms (e.g. "Deputy Commanding Officer (Chief Operating Officer)"), replace military jargon and acronyms with plain business language unless the employer is defense/government and the acronym is standard there.
+2. TRANSLATE: express military roles in civilian terms (e.g. "Deputy Commanding Officer (Chief Operating Officer)"), replace military jargon and acronyms with plain business language unless the employer is defense/government and the acronym is standard there. Use the MILITARY BACKGROUND section to translate rank, occupation codes, schools and scope of command into civilian terms and level; never copy a military code, school name or acronym into the resume without its civilian meaning.
 3. TAILOR: select, reorder and rephrase the candidate's real accomplishments to match the job's priorities and vocabulary. Lead with what this employer cares about most.
 4. ATS: plain text only — no emojis, no special symbols, no tables. Standard section names. Dates as "Mon YYYY - Mon YYYY".
 5. LENGTH: two pages, roughly 650-850 words total. Most recent and most relevant roles get the most detail; older roles go in additional_roles with 0-1 bullet.
@@ -128,6 +129,7 @@ def build_resume_prompt(profile, inventory, resume_texts, job, jd_text, template
     prefs = [f"{lbl}: {v}" for lbl, v in prefs if str(v).strip()]
     if prefs:
         parts += prefs
+    parts += military_block(profile)   # spec section 7.1: same block as the fit prompt; federal fields never in it
     if str(profile.get("notes", "")).strip():
         parts += ["", "# CANDIDATE'S INSTRUCTIONS TO THE WRITER (follow these; they override style defaults, never the truth rules)",
                   guard.notes(profile["notes"])]

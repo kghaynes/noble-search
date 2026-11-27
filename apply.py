@@ -7,6 +7,7 @@ with a character count and a copy button; the candidate pastes and submits.
 import re
 import prompt_guard as guard
 from career_inventory import CERTS_LABEL, INVENTORY_GAPS_HEADING, certifications_line
+from military import military_block
 
 FIELD_LIMIT = 2000  # common Workday limit for free-text boxes; shown as a warning only
 
@@ -50,7 +51,7 @@ APP_SYSTEM = """You help a senior military/government leader apply to a civilian
 
 Hard rules:
 1. TRUTH: use only facts from the candidate material. Never invent employers, titles, dates, numbers, certifications, clearances or outcomes. If the posting wants something he lacks, do not claim it; mention it in notes_for_candidate. Certifications, degrees and clearances listed in the candidate material (including the \"""" + CERTS_LABEL + """\" line) are held: use them, and never report one of them as missing or as a gap. Never add one that is not listed. The career inventory's \"""" + INVENTORY_GAPS_HEADING + """\" section holds open questions for him, not things he lacks.
-2. TRANSLATE military roles and jargon into civilian business language (e.g. Deputy Commanding Officer = Chief Operating Officer), unless the employer is defense/government and the acronym is standard there.
+2. TRANSLATE military roles and jargon into civilian business language (e.g. Deputy Commanding Officer = Chief Operating Officer), unless the employer is defense/government and the acronym is standard there. Use his MILITARY BACKGROUND section to translate his rank, occupation codes, schools and scope of command into civilian terms and level; never copy a military code, school name or acronym into an answer without its civilian meaning.
 3. TAILOR every field to this job's priorities and vocabulary.
 4. PLAIN TEXT: no markdown, no emojis, no special symbols. Dates as MM/YYYY.
 5. WORK HISTORY: one entry per role, newest first, covering the candidate's full history (older or less relevant roles get shorter descriptions).
@@ -69,6 +70,7 @@ def build_app_prompt(profile, inventory, resume_texts, job, jd_text, questions):
                    ("employment_types", "Employment types")):
         if str(profile.get(k) or "").strip():
             parts.append(f"{lbl}: {profile[k]}")
+    parts += military_block(profile)   # spec section 7.2: same block as the fit prompt; federal fields never in it
     if str(profile.get("notes") or "").strip():
         parts += ["", "# CANDIDATE'S INSTRUCTIONS (follow these; they never override the truth rules)", guard.notes(profile["notes"])]
     if inventory.strip():
