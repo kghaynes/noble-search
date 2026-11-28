@@ -30,6 +30,7 @@ import closures
 import updates
 import discover
 import insight
+import listview
 import search
 import suggest
 import sources
@@ -168,22 +169,11 @@ def list_jobs():
     except Exception:  # noqa: BLE001
         ctx = None
     speed = closures.employer_speed()
-    for r in rows:
-        if r.get("closed_on"):   # "Closed Nov 7 · was up 4 days · 12 days before its deadline"
-            closed = datetime.fromisoformat(r["closed_on"][:10]).date()
-            r["days_up"], r["early_days"] = closures.days_up(r, closed), closures.early_days(r, closed)
-            r["closed_how"] = closures.DETECTED_BY.get(r.get("closed_by") or "", "")
-            r["fast_days"] = None
-        else:
-            r["fast_days"] = closures.fast_days(r.get("company"), speed)
-        mode = f"{r.get('work_mode') or ''} {r.get('location') or ''}".lower()
-        r["near_home"] = bool(ctx) and "remote" not in mode and "relocation required" not in mode and \
-            ctx.where(r.get("location") or "", loose_remote=False) == "local"
-        r["watch"] = r["status"] in WATCH_STATUSES
-        r["active"] = is_active(r)
-        r["expires"] = expires_on(r)
+    today = _today()
+    for r in rows:   # days up, apply fast, near home, watch, keep window (spec section 27, listview.decorate)
+        listview.decorate(r, ctx, speed, today, MAX_AGE_DAYS, WATCH_STATUSES)
     # Watchlist items never age out; everything else (dismissed too) shows only inside the 30-day window
-    return [r for r in rows if r["watch"] or r["active"]]
+    return [r for r in rows if listview.listed(r)]
 
 
 def update_job(key, data):
