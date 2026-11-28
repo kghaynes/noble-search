@@ -89,6 +89,8 @@ _EMAIL = "The morning email is sent by this server through the person's own mail
 _PLAN = ("The person's own job-board (JSearch) API plan: key, provider, monthly budget and the rotation it drives; "
          "the Apple app's job-board searches go through the relay.")
 _OLLAMA = "Local models (Ollama) run only beside the self-hosted server."
+_BOARD_LIMITS = ("Employer-board reading limits the person can change on their own server; other clients read boards "
+                 "with the default values and offer no setting.")
 SELF_HOSTED_ONLY_SETTINGS = {
     "provider": "Choice between Anthropic and a local Ollama model; the Apple app always uses the relay (Messages API).",
     "ollama_url": _OLLAMA, "ollama_model": _OLLAMA, "ollama_num_ctx": _OLLAMA,
@@ -101,6 +103,7 @@ SELF_HOSTED_ONLY_SETTINGS = {
     "ntfy_token": "Push through the person's own ntfy server.",
     "jsearch_api_key": _PLAN, "jsearch_provider": _PLAN, "jsearch_budget": _PLAN, "jsearch_pages": _PLAN,
     "max_age_days": "Server copy of MAX_AGE_DAYS; other clients use keep_days (spec section 25).",
+    "detail_cap": _BOARD_LIMITS, "max_pages": _BOARD_LIMITS,
 }
 SELF_HOSTED_ONLY_ENV = {
     "PORT": "Port the self-hosted server listens on (8093).",
